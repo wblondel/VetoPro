@@ -1,0 +1,72 @@
+version: 2
+updates:
+  # NuGet package updates for the main solution
+  - package-ecosystem: "nuget"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "wblondel"
+    assignees:
+      - "wblondel"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    groups:
+      avalonia:
+        patterns:
+          - "Avalonia*"
+        update-types:
+          - "minor"
+          - "patch"
+      microsoft:
+        patterns:
+          - "Microsoft*"
+        update-types:
+          - "minor"
+          - "patch"
+      testing:
+        patterns:
+          - "*Test*"
+          - "xunit*"
+          - "NUnit*"
+          - "MSTest*"
+          - "coverlet*"
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      # Ignore major version updates for core frameworks
+      - dependency-name: "Microsoft.NETCore.App"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "Microsoft.AspNetCore.App"
+        update-types: ["version-update:semver-major"]
+      # Ignore pre-release versions
+      - dependency-name: "*"
+        update-types: ["version-update:semver-prerelease"]
+
+  # GitHub Actions workflow updates
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "wblondel"
+    assignees:
+      - "wblondel"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    groups:
+      actions:
+        patterns:
+          - "actions/*"
+        update-types:
+          - "minor"
+          - "patch"
