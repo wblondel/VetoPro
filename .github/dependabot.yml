@@ -44,9 +44,6 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "Microsoft.AspNetCore.App"
         update-types: ["version-update:semver-major"]
-      # Ignore pre-release versions
-      - dependency-name: "*"
-        update-types: ["version-update:semver-prerelease"]
 
   # GitHub Actions workflow updates
   - package-ecosystem: "github-actions"
