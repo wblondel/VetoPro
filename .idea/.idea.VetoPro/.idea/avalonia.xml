@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AvaloniaProject">
+    <option name="projectPerEditor">
+      <map>
+        <entry key="VetoPro/App.axaml" value="VetoPro.Desktop/VetoPro.Desktop.csproj" />
+        <entry key="VetoPro/Views/MainView.axaml" value="VetoPro.Desktop/VetoPro.Desktop.csproj" />
+        <entry key="VetoPro/Views/MainWindow.axaml" value="VetoPro.Browser/VetoPro.Browser.csproj" />
+      </map>
+    </option>
+  </component>
+</project>
