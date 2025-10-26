@@ -5,6 +5,7 @@ using VetoPro.Api.DTOs;
 using VetoPro.Api.Entities;
 using Microsoft.AspNetCore.Authorization;
 using System.Security.Claims;
+using VetoPro.Api.Helpers;
 using VetoPro.Api.Mapping;
 
 
@@ -17,31 +18,19 @@ public class InvoicesController(VetoProDbContext context) : BaseApiController(co
     /// GET: api/invoices
     /// Récupère la liste de toutes les factures (sans les lignes de détail).
     /// </summary>
+    /// <param name="paginationParams">Pagination parameters (pageNumber, pageSize).</param>
     [HttpGet]
     [Authorize(Roles = "Admin, Doctor")]
-    public async Task<ActionResult<IEnumerable<InvoiceDto>>> GetAllInvoices()
+    public async Task<ActionResult<IEnumerable<InvoiceDto>>> GetAllInvoices([FromQuery] PaginationParams paginationParams)
     {
         // Note : Ce DTO est partiel (sans les lignes) pour la performance.
         // Un DTO "InvoiceSummaryDto" serait idéal, mais nous réutilisons InvoiceDto.
-        var invoices = await _context.Invoices
+        var query = _context.Invoices
             .Include(i => i.Client)
             .OrderByDescending(i => i.IssueDate)
-            .Select(i => new InvoiceDto
-            {
-                Id = i.Id,
-                InvoiceNumber = i.InvoiceNumber,
-                IssueDate = i.IssueDate,
-                DueDate = i.DueDate,
-                TotalAmount = i.TotalAmount,
-                Status = i.Status,
-                ClientId = i.ClientId,
-                ClientName = $"{i.Client.FirstName} {i.Client.LastName}",
-                ConsultationId = i.ConsultationId,
-                // Ne charge pas les lignes ou les paiements pour la liste générale
-            })
-            .ToListAsync();
-
-        return Ok(invoices);
+            .AsQueryable();
+        
+        return await CreatePaginatedResponse(query, paginationParams, i => i.ToDto());
     }
 
     /// <summary>

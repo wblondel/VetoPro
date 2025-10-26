@@ -6,6 +6,7 @@ using VetoPro.Api.Data;
 using VetoPro.Api.DTOs;
 using VetoPro.Api.Entities;
 using VetoPro.Api.Mapping;
+using VetoPro.Api.Helpers;
 
 namespace VetoPro.Api.Controllers;
 
@@ -18,18 +19,17 @@ public class PatientsController(VetoProDbContext context) : BaseApiController(co
     /// </summary>
     [HttpGet]
     [Authorize(Roles = "Admin, Doctor")]
-    public async Task<ActionResult<IEnumerable<PatientDto>>> GetAllPatients()
+    public async Task<ActionResult<IEnumerable<PatientDto>>> GetAllPatients([FromQuery] PaginationParams paginationParams)
     {
-        var patients = await _context.Patients
+        var query = _context.Patients
             .Include(p => p.Owner) // Jointure avec Contacts (Propriétaire)
             .Include(p => p.Breed)
                 .ThenInclude(b => b.Species) // Jointure imbriquée avec Species
             .Include(p => p.Colors) // Jointure avec Colors (M2M)
             .OrderBy(p => p.Name)
-            .Select(p => p.ToDto()) // Utiliser la méthode de mapping
-            .ToListAsync();
-
-        return Ok(patients);
+            .AsQueryable();
+        
+        return await CreatePaginatedResponse(query, paginationParams, p => p.ToDto());
     }
 
     /// <summary>

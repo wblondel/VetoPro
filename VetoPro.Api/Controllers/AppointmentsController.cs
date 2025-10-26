@@ -5,6 +5,7 @@ using VetoPro.Api.Data;
 using VetoPro.Api.DTOs;
 using VetoPro.Api.Entities;
 using VetoPro.Api.Mapping;
+using VetoPro.Api.Helpers;
 
 namespace VetoPro.Api.Controllers;
 
@@ -19,8 +20,12 @@ public class AppointmentsController(VetoProDbContext context) : BaseApiControlle
     /// - Client : Voit ses RDV.
     /// Permet de filtrer par plage de dates (ex: ?startDate=2025-10-01&endDate=2025-10-31).
     /// </summary>
+    /// <param name="paginationParams">Pagination parameters (pageNumber, pageSize).</param>
+    /// <param name="startDate">Optional start date filter.</param>
+    /// <param name="endDate">Optional end date filter.</param>
     [HttpGet]
     public async Task<ActionResult<IEnumerable<AppointmentDto>>> GetAppointments(
+        [FromQuery] PaginationParams paginationParams,
         [FromQuery] DateTime? startDate, 
         [FromQuery] DateTime? endDate)
     {
@@ -62,13 +67,8 @@ public class AppointmentsController(VetoProDbContext context) : BaseApiControlle
             // On veut les RDV qui commencent *avant* la fin de la plage
             query = query.Where(a => a.StartAt <= endDate);
         }
-
-        // Exécuter la requête finale et mapper les résultats en DTO
-        var appointments = await query
-            .Select(a => a.ToDto())
-            .ToListAsync();
-
-        return Ok(appointments);
+        
+        return await CreatePaginatedResponse(query, paginationParams, a => a.ToDto());
     }
 
     /// <summary>

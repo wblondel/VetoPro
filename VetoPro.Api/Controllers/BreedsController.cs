@@ -4,6 +4,8 @@ using Microsoft.EntityFrameworkCore;
 using VetoPro.Api.Data;
 using VetoPro.Api.DTOs;
 using VetoPro.Api.Entities;
+using VetoPro.Api.Helpers;
+using VetoPro.Api.Mapping;
 
 namespace VetoPro.Api.Controllers;
 
@@ -14,23 +16,17 @@ public class BreedsController(VetoProDbContext context) : BaseApiController(cont
     /// GET: api/breeds
     /// Récupère la liste de toutes les races, avec le nom de leur espèce.
     /// </summary>
+    /// <param name="paginationParams">Pagination parameters (pageNumber, pageSize).</param>
     [HttpGet]
     [AllowAnonymous]
-    public async Task<ActionResult<IEnumerable<BreedDto>>> GetAllBreeds()
+    public async Task<ActionResult<IEnumerable<BreedDto>>> GetAllBreeds([FromQuery] PaginationParams paginationParams)
     {
-        var breeds = await _context.Breeds
+        var query = _context.Breeds
             .Include(b => b.Species) // Jointure pour charger l'entité Species
             .OrderBy(b => b.Species.Name).ThenBy(b => b.Name) // Trier par espèce, puis par nom
-            .Select(b => new BreedDto
-            {
-                Id = b.Id,
-                Name = b.Name,
-                SpeciesId = b.SpeciesId,
-                SpeciesName = b.Species.Name // Mapper le nom de l'espèce
-            })
-            .ToListAsync();
-
-        return Ok(breeds);
+            .AsQueryable();
+        
+        return await CreatePaginatedResponse(query, paginationParams, b => b.ToDto());
     }
 
     /// <summary>

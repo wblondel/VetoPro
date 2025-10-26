@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
+using System.Text.Json;
 using VetoPro.Api.Data;
+using VetoPro.Api.Helpers;
 
 namespace VetoPro.Api.Controllers;
 
@@ -52,5 +54,53 @@ public abstract class BaseApiController : ControllerBase
         }
 
         return (userContact, null);
+    }
+    
+    /// <summary>
+    /// Creates a paginated ActionResult from an IQueryable source.
+    /// Handles calling PagedList.CreateAsync, adding pagination headers,
+    /// and returning the appropriate Ok result.
+    /// </summary>
+    /// <remarks>
+    /// This helper assumes we map before pagination. This is usually fine for simple mappings.
+    /// If a mapping is very complex and can't be translated to SQL, we might need a variation
+    /// of this helper that maps after ToListAsync.
+    /// </remarks>
+    /// <typeparam name="TEntity">The type of the entity coming from the database.</typeparam>
+    /// <typeparam name="TDto">The type of the DTO to return.</typeparam>
+    /// <param name="query">The IQueryable source query (before mapping or pagination).</param>
+    /// <param name="paginationParams">The pagination parameters.</param>
+    /// <param name="mapper">A function that maps an entity TEntity to a DTO TDto.</param>
+    /// <returns>An ActionResult containing the list of TDto items for the current page.</returns>
+    protected async Task<ActionResult<IEnumerable<TDto>>> CreatePaginatedResponse<TEntity, TDto>(
+        IQueryable<TEntity> query,
+        PaginationParams paginationParams,
+        Func<TEntity, TDto> mapper)
+        where TEntity : class // Constrain TEntity to be a class (like your entities)
+        where TDto : class    // Constrain TDto to be a class (like your DTOs)
+    {
+        // Apply mapping *before* pagination if the mapper is simple
+        // If the mapper is complex or causes issues with translation, apply it after ToListAsync
+        var dtoQuery = query.Select(entity => mapper(entity));
+
+        var pagedList = await PagedList<TDto>.CreateAsync(
+            dtoQuery,
+            paginationParams.PageNumber,
+            paginationParams.PageSize);
+
+        // Add pagination headers
+        var paginationMetadata = new
+        {
+            pagedList.TotalCount,
+            pagedList.PageSize,
+            pagedList.CurrentPage,
+            pagedList.TotalPages,
+            pagedList.HasNext,
+            pagedList.HasPrevious
+        };
+        Response.Headers.Append("X-Pagination", JsonSerializer.Serialize(paginationMetadata));
+
+        // Return only the items
+        return Ok(pagedList.Items);
     }
 }

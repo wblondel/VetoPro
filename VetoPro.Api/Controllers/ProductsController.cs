@@ -5,6 +5,7 @@ using VetoPro.Api.Data;
 using VetoPro.Api.DTOs;
 using VetoPro.Api.Entities;
 using VetoPro.Api.Mapping;
+using VetoPro.Api.Helpers;
 
 namespace VetoPro.Api.Controllers;
 
@@ -15,16 +16,16 @@ public class ProductsController(VetoProDbContext context) : BaseApiController(co
     /// GET: api/products
     /// Récupère la liste de tous les produits (articles).
     /// </summary>
+    /// <param name="paginationParams">Pagination parameters (pageNumber, pageSize).</param>
     [HttpGet]
     [AllowAnonymous]
-    public async Task<ActionResult<IEnumerable<ProductDto>>> GetAllProducts()
+    public async Task<ActionResult<IEnumerable<ProductDto>>> GetAllProducts([FromQuery] PaginationParams paginationParams)
     {
-        var products = await _context.Products
+        var query = _context.Products
             .OrderBy(p => p.Name)
-            .Select(p => p.ToDto())
-            .ToListAsync();
-
-        return Ok(products);
+            .AsQueryable();
+        
+        return await CreatePaginatedResponse(query, paginationParams, p => p.ToDto());
     }
 
     /// <summary>

@@ -4,7 +4,8 @@ using Microsoft.EntityFrameworkCore;
 using VetoPro.Api.Data;
 using VetoPro.Api.DTOs;
 using VetoPro.Api.Entities;
-using VetoPro.Mapping;
+using VetoPro.Api.Mapping;
+using VetoPro.Api.Helpers;
 
 namespace VetoPro.Api.Controllers;
 
@@ -15,18 +16,18 @@ public class PriceListsController(VetoProDbContext context) : BaseApiController(
     /// GET: api/pricelists
     /// Récupère toutes les règles de prix, avec les noms des services et espèces.
     /// </summary>
+    /// <param name="paginationParams">Pagination parameters (pageNumber, pageSize).</param>
     [HttpGet]
     [AllowAnonymous]
-    public async Task<ActionResult<IEnumerable<PriceListDto>>> GetAllPriceRules()
+    public async Task<ActionResult<IEnumerable<PriceListDto>>> GetAllPriceRules([FromQuery] PaginationParams paginationParams)
     {
-        var priceRules = await _context.PriceList
+        var query = _context.PriceList
             .Include(pl => pl.Service) // Jointure avec Services
             .Include(pl => pl.Species) // Jointure avec Species (gère les null)
             .OrderBy(pl => pl.Service.Name).ThenBy(pl => pl.Species.Name)
-            .Select(pl => pl.ToDto())
-            .ToListAsync();
-
-        return Ok(priceRules);
+            .AsQueryable();
+        
+        return await CreatePaginatedResponse(query, paginationParams, pl => pl.ToDto());
     }
 
     /// <summary>

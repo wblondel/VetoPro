@@ -1,7 +1,7 @@
 using VetoPro.Api.DTOs;
 using VetoPro.Api.Entities;
 
-namespace VetoPro.Mapping;
+namespace VetoPro.Api.Mapping;
 
 public static class PriceListMapper
 {

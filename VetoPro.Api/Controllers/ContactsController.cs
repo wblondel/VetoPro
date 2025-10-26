@@ -5,8 +5,8 @@ using VetoPro.Api.Data;
 using VetoPro.Api.DTOs;
 using VetoPro.Api.Entities;
 using Microsoft.AspNetCore.Authorization;
-using System.Security.Claims;
 using VetoPro.Api.Mapping;
+using VetoPro.Api.Helpers;
 
 namespace VetoPro.Api.Controllers;
 
@@ -23,18 +23,18 @@ public class ContactsController(
     /// GET: api/contacts
     /// Récupère une liste de tous les contacts.
     /// </summary>
+    /// <param name="paginationParams">Pagination parameters (pageNumber, pageSize).</param>
     [HttpGet]
     [Authorize(Roles = "Admin, Doctor")]
-    public async Task<ActionResult<IEnumerable<ContactDto>>> GetAllContacts()
+    public async Task<ActionResult<IEnumerable<ContactDto>>> GetAllContacts([FromQuery] PaginationParams paginationParams)
     {
-        var contacts = await _context.Contacts
+        var query = _context.Contacts
             .Include(c => c.User) // Inclure le compte de connexion
             .Include(c => c.StaffDetails) // Inclure les détails du staff
             .OrderBy(c => c.LastName).ThenBy(c => c.FirstName)
-            .Select(c => c.ToDto()) // Utiliser une méthode de mapping
-            .ToListAsync();
-            
-        return Ok(contacts);
+            .AsQueryable();
+        
+        return await CreatePaginatedResponse(query, paginationParams, c => c.ToDto());
     }
 
     /// <summary>

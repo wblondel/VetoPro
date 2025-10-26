@@ -3,7 +3,9 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using VetoPro.Api.Data;
 using VetoPro.Api.DTOs;
-using VetoPro.Api.Entities; // Nécessaire pour l'entité 'Color'
+using VetoPro.Api.Entities;
+using VetoPro.Api.Helpers;
+using VetoPro.Api.Mapping; // Nécessaire pour l'entité 'Color'
 
 namespace VetoPro.Api.Controllers;
 
@@ -14,21 +16,16 @@ public class ColorsController(VetoProDbContext context) : BaseApiController(cont
     /// GET: api/colors
     /// Récupère la liste de toutes les couleurs.
     /// </summary>
+    /// <param name="paginationParams">Pagination parameters (pageNumber, pageSize).</param>
     [HttpGet]
     [AllowAnonymous]
-    public async Task<ActionResult<IEnumerable<ColorDto>>> GetAllColors()
+    public async Task<ActionResult<IEnumerable<ColorDto>>> GetAllColors([FromQuery] PaginationParams paginationParams)
     {
-        var colors = await _context.Colors
+        var query = _context.Colors
             .OrderBy(c => c.Name)
-            .Select(c => new ColorDto
-            {
-                Id = c.Id,
-                Name = c.Name,
-                HexValue = c.HexValue
-            })
-            .ToListAsync();
-
-        return Ok(colors);
+            .AsQueryable();
+        
+        return await CreatePaginatedResponse(query, paginationParams, c => c.ToDto());
     }
 
     /// <summary>

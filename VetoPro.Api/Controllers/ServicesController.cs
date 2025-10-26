@@ -5,6 +5,7 @@ using VetoPro.Api.Data;
 using VetoPro.Api.DTOs;
 using VetoPro.Api.Entities;
 using VetoPro.Api.Mapping;
+using VetoPro.Api.Helpers;
 
 namespace VetoPro.Api.Controllers;
 
@@ -15,16 +16,16 @@ public class ServicesController(VetoProDbContext context) : BaseApiController(co
     /// GET: api/services
     /// Récupère la liste de tous les services (actes).
     /// </summary>
+    /// <param name="paginationParams">Pagination parameters (pageNumber, pageSize).</param>
     [HttpGet]
     [AllowAnonymous]
-    public async Task<ActionResult<IEnumerable<ServiceDto>>> GetAllServices()
+    public async Task<ActionResult<IEnumerable<ServiceDto>>> GetAllServices([FromQuery] PaginationParams paginationParams)
     {
-        var services = await _context.Services
+        var query = _context.Services
             .OrderBy(s => s.Name)
-            .Select(s => s.ToDto())
-            .ToListAsync();
-
-        return Ok(services);
+            .AsQueryable();
+        
+        return await CreatePaginatedResponse(query, paginationParams, s => s.ToDto());
     }
 
     /// <summary>
