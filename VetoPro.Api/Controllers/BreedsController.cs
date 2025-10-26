@@ -1,0 +1,178 @@
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using VetoPro.Api.Data;
+using VetoPro.Api.DTOs;
+using VetoPro.Api.Entities;
+
+namespace VetoPro.Api.Controllers;
+
+[ApiController]
+[Route("api/[controller]")] // Route: /api/breeds
+public class BreedsController : ControllerBase
+{
+    private readonly VetoProDbContext _context;
+
+    public BreedsController(VetoProDbContext context)
+    {
+        _context = context;
+    }
+
+    /// <summary>
+    /// GET: api/breeds
+    /// Récupère la liste de toutes les races, avec le nom de leur espèce.
+    /// </summary>
+    [HttpGet]
+    public async Task<ActionResult<IEnumerable<BreedDto>>> GetAllBreeds()
+    {
+        var breeds = await _context.Breeds
+            .Include(b => b.Species) // Jointure pour charger l'entité Species
+            .OrderBy(b => b.Species.Name).ThenBy(b => b.Name) // Trier par espèce, puis par nom
+            .Select(b => new BreedDto
+            {
+                Id = b.Id,
+                Name = b.Name,
+                SpeciesId = b.SpeciesId,
+                SpeciesName = b.Species.Name // Mapper le nom de l'espèce
+            })
+            .ToListAsync();
+
+        return Ok(breeds);
+    }
+
+    /// <summary>
+    /// GET: api/breeds/{id}
+    /// Récupère une race spécifique par son ID.
+    /// </summary>
+    [HttpGet("{id}")]
+    public async Task<ActionResult<BreedDto>> GetBreedById(Guid id)
+    {
+        var breed = await _context.Breeds
+            .Include(b => b.Species)
+            .Select(b => new BreedDto
+            {
+                Id = b.Id,
+                Name = b.Name,
+                SpeciesId = b.SpeciesId,
+                SpeciesName = b.Species.Name
+            })
+            .FirstOrDefaultAsync(b => b.Id == id);
+
+        if (breed == null)
+        {
+            return NotFound("La race avec cet ID n'a pas été trouvée.");
+        }
+
+        return Ok(breed);
+    }
+
+    /// <summary>
+    /// POST: api/breeds
+    /// Crée une nouvelle race.
+    /// </summary>
+    [HttpPost]
+    public async Task<ActionResult<BreedDto>> CreateBreed([FromBody] BreedCreateDto createDto)
+    {
+        // 1. Vérifier si l'espèce parente existe
+        var species = await _context.Species.FindAsync(createDto.SpeciesId);
+        if (species == null)
+        {
+            return BadRequest("L'espèce (SpeciesId) fournie n'existe pas.");
+        }
+
+        // 2. Vérifier si le nom existe déjà *pour cette espèce*
+        if (await _context.Breeds.AnyAsync(b => b.Name == createDto.Name && b.SpeciesId == createDto.SpeciesId))
+        {
+            return Conflict("Une race avec ce nom existe déjà pour cette espèce.");
+        }
+
+        // 3. Mapper et créer l'entité
+        var newBreed = new Breed
+        {
+            Name = createDto.Name,
+            SpeciesId = createDto.SpeciesId
+        };
+
+        _context.Breeds.Add(newBreed);
+        await _context.SaveChangesAsync();
+
+        // 4. Mapper au DTO de retour
+        var breedDto = new BreedDto
+        {
+            Id = newBreed.Id,
+            Name = newBreed.Name,
+            SpeciesId = newBreed.SpeciesId,
+            SpeciesName = species.Name // Nous avons déjà l'objet 'species'
+        };
+
+        return CreatedAtAction(nameof(GetBreedById), new { id = breedDto.Id }, breedDto);
+    }
+
+    /// <summary>
+    /// PUT: api/breeds/{id}
+    /// Met à jour une race existante.
+    /// </summary>
+    [HttpPut("{id}")]
+    public async Task<IActionResult> UpdateBreed(Guid id, [FromBody] BreedUpdateDto updateDto)
+    {
+        var breedToUpdate = await _context.Breeds.FindAsync(id);
+
+        if (breedToUpdate == null)
+        {
+            return NotFound("La race à mettre à jour n'a pas été trouvée.");
+        }
+
+        // 1. Vérifier si la *nouvelle* espèce parente existe
+        if (breedToUpdate.SpeciesId != updateDto.SpeciesId)
+        {
+            if (!await _context.Species.AnyAsync(s => s.Id == updateDto.SpeciesId))
+            {
+                return BadRequest("La nouvelle espèce (SpeciesId) fournie n'existe pas.");
+            }
+        }
+        
+        // 2. Vérifier les conflits de nom
+        if (await _context.Breeds.AnyAsync(b => b.Name == updateDto.Name && b.SpeciesId == updateDto.SpeciesId && b.Id != id))
+        {
+            return Conflict("Une autre race avec ce nom existe déjà pour cette espèce.");
+        }
+
+        // 3. Appliquer les modifications
+        breedToUpdate.Name = updateDto.Name;
+        breedToUpdate.SpeciesId = updateDto.SpeciesId;
+
+        await _context.SaveChangesAsync();
+
+        return NoContent(); // 204 No Content
+    }
+
+    /// <summary>
+    /// DELETE: api/breeds/{id}
+    /// Supprime une race.
+    /// </summary>
+    [HttpDelete("{id}")]
+    public async Task<IActionResult> DeleteBreed(Guid id)
+    {
+        var breedToDelete = await _context.Breeds.FindAsync(id);
+
+        if (breedToDelete == null)
+        {
+            return NotFound("La race à supprimer n'a pas été trouvée.");
+        }
+
+        // Sécurité : Vérifier si la race est utilisée par des patients
+        var isUsed = await _context.Entry(breedToDelete)
+            .Collection(b => b.Patients)
+            .Query()
+            .AnyAsync();
+
+        if (isUsed)
+        {
+            return BadRequest("Cette race ne peut pas être supprimée car elle est utilisée par un ou plusieurs patients.");
+        }
+
+        _context.Breeds.Remove(breedToDelete);
+        await _context.SaveChangesAsync();
+
+        return NoContent();
+    }
+}
