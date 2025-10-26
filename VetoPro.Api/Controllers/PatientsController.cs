@@ -62,6 +62,30 @@ public class PatientsController : ControllerBase
     }
 
     /// <summary>
+    /// GET: api/patients/{id}/consultations
+    /// Récupère l'historique de toutes les consultations pour un patient donné.
+    /// </summary>
+    [HttpGet("{id}/consultations")]
+    public async Task<ActionResult<IEnumerable<ConsultationDto>>> GetConsultationsForPatient(Guid id)
+    {
+        if (!await _context.Patients.AnyAsync(p => p.Id == id))
+        {
+            return NotFound("Patient non trouvé.");
+        }
+
+        var consultations = await _context.Consultations
+            .Include(c => c.Client)
+            .Include(c => c.Patient)
+            .Include(c => c.Doctor)
+            .Where(c => c.PatientId == id) // Filtrer par l'ID du patient
+            .OrderByDescending(c => c.ConsultationDate) // Du plus récent au plus ancien
+            .Select(c => MapToConsultationDto(c)) // Utiliser le mapper de consultation
+            .ToListAsync();
+
+        return Ok(consultations);
+    }
+    
+    /// <summary>
     /// POST: api/patients
     /// Crée un nouveau patient.
     /// </summary>
@@ -257,6 +281,32 @@ public class PatientsController : ControllerBase
                 Name = c.Name,
                 HexValue = c.HexValue
             }).ToList()
+        };
+    }
+    
+    /// <summary>
+    /// Méthode privée pour mapper Consultation vers ConsultationDto.
+    /// S'attend à ce que c.Client, c.Patient, et c.Doctor soient pré-chargés.
+    /// </summary>
+    private static ConsultationDto MapToConsultationDto(Consultation c)
+    {
+        return new ConsultationDto
+        {
+            Id = c.Id,
+            AppointmentId = c.AppointmentId,
+            ConsultationDate = c.ConsultationDate,
+            ClientId = c.ClientId,
+            ClientName = $"{c.Client.FirstName} {c.Client.LastName}",
+            PatientId = c.PatientId,
+            PatientName = c.Patient.Name,
+            DoctorId = c.DoctorId,
+            DoctorName = $"{c.Doctor.FirstName} {c.Doctor.LastName}",
+            WeightKg = c.WeightKg,
+            TemperatureCelsius = c.TemperatureCelsius,
+            ClinicalExam = c.ClinicalExam,
+            Diagnosis = c.Diagnosis,
+            Treatment = c.Treatment,
+            Prescriptions = c.Prescriptions
         };
     }
 }
