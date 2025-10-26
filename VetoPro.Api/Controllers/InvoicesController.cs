@@ -1,0 +1,468 @@
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using VetoPro.Api.Data;
+using VetoPro.Api.DTOs;
+using VetoPro.Api.Entities;
+
+namespace VetoPro.Api.Controllers;
+
+[ApiController]
+[Route("api/[controller]")] // Route: /api/invoices
+public class InvoicesController : ControllerBase
+{
+    private readonly VetoProDbContext _context;
+
+    public InvoicesController(VetoProDbContext context)
+    {
+        _context = context;
+    }
+
+    /// <summary>
+    /// GET: api/invoices
+    /// Récupère la liste de toutes les factures (sans les lignes de détail).
+    /// </summary>
+    [HttpGet]
+    public async Task<ActionResult<IEnumerable<InvoiceDto>>> GetAllInvoices()
+    {
+        // Note : Ce DTO est partiel (sans les lignes) pour la performance.
+        // Un DTO "InvoiceSummaryDto" serait idéal, mais nous réutilisons InvoiceDto.
+        var invoices = await _context.Invoices
+            .Include(i => i.Client)
+            .OrderByDescending(i => i.IssueDate)
+            .Select(i => new InvoiceDto
+            {
+                Id = i.Id,
+                InvoiceNumber = i.InvoiceNumber,
+                IssueDate = i.IssueDate,
+                DueDate = i.DueDate,
+                TotalAmount = i.TotalAmount,
+                Status = i.Status,
+                ClientId = i.ClientId,
+                ClientName = $"{i.Client.FirstName} {i.Client.LastName}",
+                ConsultationId = i.ConsultationId,
+                // Ne charge pas les lignes ou les paiements pour la liste générale
+            })
+            .ToListAsync();
+
+        return Ok(invoices);
+    }
+
+    /// <summary>
+    /// GET: api/invoices/{id}
+    /// Récupère une facture complète (avec lignes et total payé) par son ID.
+    /// </summary>
+    [HttpGet("{id}")]
+    public async Task<ActionResult<InvoiceDto>> GetInvoiceById(Guid id)
+    {
+        var invoice = await _context.Invoices
+            .Include(i => i.Client)
+            .Include(i => i.InvoiceLines) // Charger les lignes
+            .Include(i => i.Payments) // Charger les paiements
+            .Where(i => i.Id == id)
+            .Select(i => MapToInvoiceDto(i)) // Utiliser le mapper complet
+            .FirstOrDefaultAsync();
+
+        if (invoice == null)
+        {
+            return NotFound("Facture non trouvée.");
+        }
+
+        return Ok(invoice);
+    }
+
+    /// <summary>
+    /// POST: api/invoices
+    /// Crée une nouvelle facture et ses lignes de détail.
+    /// </summary>
+    [HttpPost]
+    public async Task<ActionResult<InvoiceDto>> CreateInvoice([FromBody] InvoiceCreateDto createDto)
+    {
+        // Utiliser une transaction pour garantir que la facture ET ses lignes sont créées, ou rien.
+        await using var transaction = await _context.Database.BeginTransactionAsync();
+        try
+        {
+            // 1. Valider les clés étrangères (Client, Consultation)
+            if (!await _context.Contacts.AnyAsync(c => c.Id == createDto.ClientId))
+            {
+                return BadRequest("L'ID du client (ClientId) n'existe pas.");
+            }
+            if (createDto.ConsultationId.HasValue && !await _context.Consultations.AnyAsync(c => c.Id == createDto.ConsultationId.Value))
+            {
+                return BadRequest("L'ID de la consultation (ConsultationId) n'existe pas.");
+            }
+            
+            // 2. Valider le numéro de facture (contrainte unique)
+            if (await _context.Invoices.AnyAsync(i => i.InvoiceNumber == createDto.InvoiceNumber))
+            {
+                return Conflict("Ce numéro de facture (InvoiceNumber) est déjà utilisé.");
+            }
+
+            decimal calculatedTotal = 0;
+            var newInvoiceLines = new List<InvoiceLine>();
+
+            // 3. Valider et préparer les lignes de facture
+            foreach (var lineDto in createDto.InvoiceLines)
+            {
+                string description;
+                // Valider l'article (Service ou Produit)
+                if (lineDto.ItemType.Equals("Service", StringComparison.OrdinalIgnoreCase))
+                {
+                    var service = await _context.Services.FindAsync(lineDto.ItemId);
+                    if (service == null) return BadRequest($"La ligne de service avec ItemId {lineDto.ItemId} n'existe pas.");
+                    description = service.Name;
+                }
+                else if (lineDto.ItemType.Equals("Product", StringComparison.OrdinalIgnoreCase))
+                {
+                    var product = await _context.Products.FindAsync(lineDto.ItemId);
+                    if (product == null) return BadRequest($"La ligne de produit avec ItemId {lineDto.ItemId} n'existe pas.");
+                    description = product.Name;
+                    // TODO: Gérer la déduction du stock (product.StockQuantity -= lineDto.Quantity)
+                }
+                else
+                {
+                    return BadRequest($"Type d'article (ItemType) non valide : '{lineDto.ItemType}'.");
+                }
+
+                var lineTotal = lineDto.Quantity * lineDto.UnitPrice;
+                calculatedTotal += lineTotal;
+
+                newInvoiceLines.Add(new InvoiceLine
+                {
+                    ServiceId = lineDto.ItemType.Equals("Service") ? lineDto.ItemId : null,
+                    ProductId = lineDto.ItemType.Equals("Product") ? lineDto.ItemId : null,
+                    Description = description,
+                    Quantity = lineDto.Quantity,
+                    UnitPrice = lineDto.UnitPrice,
+                    LineTotal = lineTotal
+                });
+            }
+
+            // 4. Créer l'entité Facture (Invoice)
+            var newInvoice = new Invoice
+            {
+                ClientId = createDto.ClientId,
+                ConsultationId = createDto.ConsultationId,
+                InvoiceNumber = createDto.InvoiceNumber,
+                IssueDate = createDto.IssueDate,
+                DueDate = createDto.DueDate,
+                Status = createDto.Status,
+                TotalAmount = calculatedTotal,
+                InvoiceLines = newInvoiceLines // Attacher les lignes
+            };
+
+            _context.Invoices.Add(newInvoice);
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            // 5. Recharger et renvoyer le DTO complet
+            var createdInvoice = await _context.Invoices
+                .Include(i => i.Client)
+                .Include(i => i.InvoiceLines)
+                .Include(i => i.Payments)
+                .FirstAsync(i => i.Id == newInvoice.Id);
+
+            return CreatedAtAction(nameof(GetInvoiceById), new { id = createdInvoice.Id }, MapToInvoiceDto(createdInvoice));
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+            return StatusCode(500, $"Erreur interne lors de la création de la facture: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// PUT: api/invoices/{id}
+    /// Met à jour une facture et synchronise ses lignes de détail.
+    /// </summary>
+    [HttpPut("{id}")]
+    public async Task<IActionResult> UpdateInvoice(Guid id, [FromBody] InvoiceUpdateDto updateDto)
+    {
+        await using var transaction = await _context.Database.BeginTransactionAsync();
+        try
+        {
+            var invoiceToUpdate = await _context.Invoices
+                .Include(i => i.InvoiceLines) // Charger les lignes existantes
+                .FirstOrDefaultAsync(i => i.Id == id);
+
+            if (invoiceToUpdate == null)
+            {
+                return NotFound("Facture non trouvée.");
+            }
+            
+            // Règle métier : Ne pas modifier une facture si elle est déjà payée ou annulée
+            if (invoiceToUpdate.Status == "Paid" || invoiceToUpdate.Status == "Void")
+            {
+                return BadRequest($"La facture ne peut pas être modifiée car son statut est '{invoiceToUpdate.Status}'.");
+            }
+
+            // 1. Valider les clés étrangères
+            if (updateDto.ClientId != invoiceToUpdate.ClientId && !await _context.Contacts.AnyAsync(c => c.Id == updateDto.ClientId))
+            {
+                return BadRequest("Le nouvel ID client n'existe pas.");
+            }
+            // TODO: validation similaire pour ConsultationId, InvoiceNumber
+
+            // 2. Synchroniser les lignes de facture (Logique "Upsert" + Suppression)
+            var newLineDtosById = updateDto.InvoiceLines
+                .Where(line => line.Id.HasValue)
+                .ToDictionary(line => line.Id!.Value);
+            var existingLines = invoiceToUpdate.InvoiceLines.ToList();
+            
+            // Supprimer les lignes qui ne sont plus dans le DTO
+            foreach (var existingLine in existingLines)
+            {
+                if (!newLineDtosById.ContainsKey(existingLine.Id))
+                {
+                    _context.InvoiceLines.Remove(existingLine);
+                }
+            }
+
+            decimal calculatedTotal = 0;
+            // Mettre à jour les lignes existantes et ajouter les nouvelles
+            foreach (var lineDto in updateDto.InvoiceLines)
+            {
+                string description;
+                // ... (Validation de ItemId et ItemType comme dans CreateInvoice) ...
+                if (lineDto.ItemType.Equals("Service", StringComparison.OrdinalIgnoreCase))
+                {
+                    var service = await _context.Services.FindAsync(lineDto.ItemId);
+                    if (service == null) return BadRequest($"La ligne de service avec ItemId {lineDto.ItemId} n'existe pas.");
+                    description = service.Name;
+                }
+                else
+                {
+                    var product = await _context.Products.FindAsync(lineDto.ItemId);
+                    if (product == null) return BadRequest($"La ligne de produit avec ItemId {lineDto.ItemId} n'existe pas.");
+                    description = product.Name;
+                }
+                
+                var lineTotal = lineDto.Quantity * lineDto.UnitPrice;
+                calculatedTotal += lineTotal;
+
+                var existingLine = existingLines.FirstOrDefault(l => l.Id == lineDto.Id);
+                if (existingLine != null)
+                {
+                    // Mettre à jour la ligne existante
+                    existingLine.ServiceId = lineDto.ItemType.Equals("Service") ? lineDto.ItemId : null;
+                    existingLine.ProductId = lineDto.ItemType.Equals("Product") ? lineDto.ItemId : null;
+                    existingLine.Description = description;
+                    existingLine.Quantity = lineDto.Quantity;
+                    existingLine.UnitPrice = lineDto.UnitPrice;
+                    existingLine.LineTotal = lineTotal;
+                }
+                else
+                {
+                    // Ajouter la nouvelle ligne
+                    invoiceToUpdate.InvoiceLines.Add(new InvoiceLine
+                    {
+                        ServiceId = lineDto.ItemType.Equals("Service") ? lineDto.ItemId : null,
+                        ProductId = lineDto.ItemType.Equals("Product") ? lineDto.ItemId : null,
+                        Description = description,
+                        Quantity = lineDto.Quantity,
+                        UnitPrice = lineDto.UnitPrice,
+                        LineTotal = lineTotal
+                    });
+                }
+            }
+
+            // 3. Mettre à jour l'en-tête de la facture
+            invoiceToUpdate.ClientId = updateDto.ClientId;
+            invoiceToUpdate.ConsultationId = updateDto.ConsultationId;
+            invoiceToUpdate.InvoiceNumber = updateDto.InvoiceNumber;
+            invoiceToUpdate.IssueDate = updateDto.IssueDate;
+            invoiceToUpdate.DueDate = updateDto.DueDate;
+            invoiceToUpdate.Status = updateDto.Status;
+            invoiceToUpdate.TotalAmount = calculatedTotal;
+
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            return NoContent(); // 204 No Content
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+            return StatusCode(500, $"Erreur interne lors de la mise à jour de la facture: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// DELETE: api/invoices/{id}
+    /// Supprime une facture.
+    /// </summary>
+    [HttpDelete("{id}")]
+    public async Task<IActionResult> DeleteInvoice(Guid id)
+    {
+        var invoiceToDelete = await _context.Invoices
+            .Include(i => i.Payments)
+            .Include(i => i.InvoiceLines)
+            .FirstOrDefaultAsync(i => i.Id == id);
+
+        if (invoiceToDelete == null)
+        {
+            return NotFound("Facture non trouvée.");
+        }
+
+        // Règle métier : Ne pas supprimer une facture qui a des paiements.
+        if (invoiceToDelete.Payments.Any())
+        {
+            return BadRequest("Cette facture ne peut pas être supprimée car elle a des paiements associés. Veuillez d'abord annuler les paiements ou changer le statut de la facture en 'Annulé' (Void).");
+        }
+        
+        // Règle métier : Ne pas supprimer une facture payée (Paid)
+        if (invoiceToDelete.Status == "Paid")
+        {
+            return BadRequest("Une facture payée ne peut pas être supprimée.");
+        }
+        
+        // La suppression en cascade (configurée dans le DbContext ou par défaut)
+        // devrait supprimer les InvoiceLines. Mais nous pouvons être explicites.
+        _context.InvoiceLines.RemoveRange(invoiceToDelete.InvoiceLines);
+        _context.Invoices.Remove(invoiceToDelete);
+
+        await _context.SaveChangesAsync();
+
+        return NoContent();
+    }
+    
+    /// <summary>
+    /// GET: api/invoices/{id}/payments
+    /// Récupère la liste de tous les paiements pour une facture spécifique.
+    /// </summary>
+    [HttpGet("{id}/payments")]
+    public async Task<ActionResult<IEnumerable<PaymentDto>>> GetPaymentsForInvoice(Guid id)
+    {
+        if (!await _context.Invoices.AnyAsync(i => i.Id == id))
+        {
+            return NotFound("Facture non trouvée.");
+        }
+
+        var payments = await _context.Payments
+            .Where(p => p.InvoiceId == id)
+            .OrderBy(p => p.PaymentDate)
+            .Select(p => MapToPaymentDto(p))
+            .ToListAsync();
+
+        return Ok(payments);
+    }
+    
+    /// <summary>
+    /// POST: api/invoices/{id}/payments
+    /// Enregistre un nouveau paiement pour une facture.
+    /// </summary>
+    [HttpPost("{id}/payments")]
+    public async Task<ActionResult<PaymentDto>> CreatePaymentForInvoice(Guid id, [FromBody] PaymentCreateDto createDto)
+    {
+        // Vérifier que le DTO est pour la bonne facture
+        if (id != createDto.InvoiceId)
+        {
+            return BadRequest("L'ID de la facture dans l'URL ne correspond pas à l'ID dans le corps de la requête.");
+        }
+
+        var invoice = await _context.Invoices
+            .Include(i => i.Payments) // Charger les paiements existants
+            .FirstOrDefaultAsync(i => i.Id == id);
+
+        if (invoice == null)
+        {
+            return NotFound("Facture non trouvée.");
+        }
+
+        // Règle métier : Ne pas ajouter de paiement à une facture annulée
+        if (invoice.Status == "Void")
+        {
+            return BadRequest("Les paiements ne peuvent pas être ajoutés à une facture annulée (Void).");
+        }
+
+        // Règle métier : Gérer les trop-perçus
+        var totalPaid = invoice.Payments.Sum(p => p.Amount);
+        if (totalPaid + createDto.Amount > invoice.TotalAmount)
+        {
+            // Autoriser le trop-perçu, mais peut-être logger un avertissement.
+            // Pour cet exemple, nous l'autorisons, mais nous nous assurons que le statut est "Paid".
+        }
+        
+        // 1. Créer l'entité Paiement
+        var newPayment = new Payment
+        {
+            InvoiceId = createDto.InvoiceId,
+            PaymentDate = createDto.PaymentDate.ToUniversalTime(),
+            Amount = createDto.Amount,
+            PaymentMethod = createDto.PaymentMethod,
+            TransactionId = createDto.TransactionId
+        };
+
+        _context.Payments.Add(newPayment);
+
+        // 2. Mettre à jour le statut de la facture
+        if (totalPaid + createDto.Amount >= invoice.TotalAmount)
+        {
+            invoice.Status = "Paid";
+        }
+        else
+        {
+            invoice.Status = "Sent"; // TODO: supporter les paiements partiels avec "PartiallyPaid" 
+        }
+
+        await _context.SaveChangesAsync();
+
+        // 3. Mapper et renvoyer le DTO
+        var paymentDto = MapToPaymentDto(newPayment);
+
+        // Renvoie une URL vers le endpoint GetById du *PaymentsController*
+        return CreatedAtAction(
+            "GetPaymentById",      // Nom de l'action
+            "Payments",            // Nom du contrôleur
+            new { id = paymentDto.Id }, // Paramètres de route
+            paymentDto);
+    }
+
+    /// <summary>
+    /// Méthode privée pour mapper une entité Invoice vers un InvoiceDto.
+    /// S'attend à ce que i.Client, i.InvoiceLines, et i.Payments soient pré-chargés.
+    /// </summary>
+    private static InvoiceDto MapToInvoiceDto(Invoice i)
+    {
+        return new InvoiceDto
+        {
+            Id = i.Id,
+            InvoiceNumber = i.InvoiceNumber,
+            IssueDate = i.IssueDate,
+            DueDate = i.DueDate,
+            TotalAmount = i.TotalAmount,
+            Status = i.Status,
+            ClientId = i.ClientId,
+            ClientName = $"{i.Client.FirstName} {i.Client.LastName}",
+            ConsultationId = i.ConsultationId,
+            // Mapper les lignes
+            InvoiceLines = i.InvoiceLines.Select(line => new InvoiceLineDto
+            {
+                Id = line.Id,
+                ItemId = line.ServiceId ?? line.ProductId,
+                ItemType = line.ServiceId.HasValue ? "Service" : "Product",
+                Description = line.Description,
+                Quantity = line.Quantity,
+                UnitPrice = line.UnitPrice,
+                LineTotal = line.LineTotal
+            }).ToList(),
+            // Calculer le total payé
+            AmountPaid = i.Payments.Sum(p => p.Amount)
+        };
+    }
+    
+    /// <summary>
+    /// Méthode privée pour mapper une entité Payment vers un PaymentDto.
+    /// </summary>
+    private static PaymentDto MapToPaymentDto(Payment p)
+    {
+        return new PaymentDto
+        {
+            Id = p.Id,
+            InvoiceId = p.InvoiceId,
+            PaymentDate = p.PaymentDate,
+            Amount = p.Amount,
+            PaymentMethod = p.PaymentMethod,
+            TransactionId = p.TransactionId
+        };
+    }
+}
