@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using VetoPro.Api.Data;
@@ -6,22 +7,15 @@ using VetoPro.Api.Entities;
 
 namespace VetoPro.Api.Controllers;
 
-[ApiController]
-[Route("api/[controller]")] // Route: /api/breeds
-public class BreedsController : ControllerBase
+[Authorize]
+public class BreedsController(VetoProDbContext context) : BaseApiController(context)
 {
-    private readonly VetoProDbContext _context;
-
-    public BreedsController(VetoProDbContext context)
-    {
-        _context = context;
-    }
-
     /// <summary>
     /// GET: api/breeds
     /// Récupère la liste de toutes les races, avec le nom de leur espèce.
     /// </summary>
     [HttpGet]
+    [AllowAnonymous]
     public async Task<ActionResult<IEnumerable<BreedDto>>> GetAllBreeds()
     {
         var breeds = await _context.Breeds
@@ -44,6 +38,7 @@ public class BreedsController : ControllerBase
     /// Récupère une race spécifique par son ID.
     /// </summary>
     [HttpGet("{id}")]
+    [AllowAnonymous]
     public async Task<ActionResult<BreedDto>> GetBreedById(Guid id)
     {
         var breed = await _context.Breeds
@@ -70,6 +65,7 @@ public class BreedsController : ControllerBase
     /// Crée une nouvelle race.
     /// </summary>
     [HttpPost]
+    [Authorize(Roles = "Admin, Doctor")]
     public async Task<ActionResult<BreedDto>> CreateBreed([FromBody] BreedCreateDto createDto)
     {
         // 1. Vérifier si l'espèce parente existe
@@ -112,6 +108,7 @@ public class BreedsController : ControllerBase
     /// Met à jour une race existante.
     /// </summary>
     [HttpPut("{id}")]
+    [Authorize(Roles = "Admin, Doctor")]
     public async Task<IActionResult> UpdateBreed(Guid id, [FromBody] BreedUpdateDto updateDto)
     {
         var breedToUpdate = await _context.Breeds.FindAsync(id);
@@ -150,6 +147,7 @@ public class BreedsController : ControllerBase
     /// Supprime une race.
     /// </summary>
     [HttpDelete("{id}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeleteBreed(Guid id)
     {
         var breedToDelete = await _context.Breeds.FindAsync(id);

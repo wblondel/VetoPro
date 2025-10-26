@@ -1,22 +1,16 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using VetoPro.Api.Data;
 using VetoPro.Api.DTOs;
 using VetoPro.Api.Entities;
+using System.Security.Claims;
 
 namespace VetoPro.Api.Controllers;
 
-[ApiController]
-[Route("api/[controller]")] // Route: /api/payments
-public class PaymentsController : ControllerBase
+[Authorize]
+public class PaymentsController(VetoProDbContext context) : BaseApiController(context)
 {
-    private readonly VetoProDbContext _context;
-
-    public PaymentsController(VetoProDbContext context)
-    {
-        _context = context;
-    }
-
     /// <summary>
     /// GET: api/payments/{id}
     /// Récupère un paiement spécifique par son ID.
@@ -25,8 +19,8 @@ public class PaymentsController : ControllerBase
     public async Task<ActionResult<PaymentDto>> GetPaymentById(Guid id)
     {
         var payment = await _context.Payments
+            .Include(p => p.Invoice)
             .Where(p => p.Id == id)
-            .Select(p => MapToPaymentDto(p))
             .FirstOrDefaultAsync();
 
         if (payment == null)
@@ -34,7 +28,19 @@ public class PaymentsController : ControllerBase
             return NotFound("Paiement non trouvé.");
         }
 
-        return Ok(payment);
+        var (userContactId, errorResult) = await GetUserContactId();
+        if (errorResult != null) return errorResult;
+
+        bool isAdmin = User.IsInRole("Admin");
+        bool isDoctor = User.IsInRole("Doctor");
+        bool isOwnerClient = payment.Invoice.ClientId == userContactId;
+
+        if (!isAdmin && !isDoctor && !isOwnerClient)
+        {
+            return Forbid(); // 403 Forbidden
+        }
+        
+        return Ok(MapToPaymentDto(payment));
     }
 
     /// <summary>
@@ -42,6 +48,7 @@ public class PaymentsController : ControllerBase
     /// Supprime (annule) un paiement.
     /// </summary>
     [HttpDelete("{id}")]
+    [Authorize(Roles = "Admin, Doctor")]
     public async Task<IActionResult> DeletePayment(Guid id)
     {
         var paymentToDelete = await _context.Payments

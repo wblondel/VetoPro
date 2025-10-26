@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using VetoPro.Api.Data;
@@ -8,22 +9,14 @@ namespace VetoPro.Api.Controllers;
 /// <summary>
 /// API Controller pour la gestion des Espèces (Species).
 /// </summary>
-[ApiController]
-[Route("api/[controller]")] // Définit la route de base : "api/species"
-public class SpeciesController : ControllerBase
+[Authorize]
+public class SpeciesController(VetoProDbContext context) : BaseApiController(context)
 {
-    private readonly VetoProDbContext _context;
-
-    // Le DbContext est injecté par .NET (Dependency Injection)
-    public SpeciesController(VetoProDbContext context)
-    {
-        _context = context;
-    }
-
     /// <summary>
     /// Récupère la liste de toutes les espèces.
     /// </summary>
     [HttpGet] // Répond à la requête : GET /api/species
+    [AllowAnonymous]
     public async Task<ActionResult<IEnumerable<SpeciesDto>>> GetSpecies()
     {
         try
@@ -51,7 +44,8 @@ public class SpeciesController : ControllerBase
     /// GET: api/species/{id}/breeds
     /// Récupère la liste de toutes les races pour une espèce donnée.
     /// </summary>
-    [HttpGet("{id}/breeds")] // La nouvelle route imbriquée
+    [HttpGet("{id}/breeds")]
+    [AllowAnonymous]
     public async Task<ActionResult<IEnumerable<BreedDto>>> GetBreedsForSpecies(Guid id)
     {
         // 1. Vérifier si l'espèce parente existe

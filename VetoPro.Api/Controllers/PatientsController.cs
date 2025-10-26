@@ -1,4 +1,5 @@
 using System.Numerics;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using VetoPro.Api.Data;
@@ -7,22 +8,15 @@ using VetoPro.Api.Entities;
 
 namespace VetoPro.Api.Controllers;
 
-[ApiController]
-[Route("api/[controller]")] // Route: /api/patients
-public class PatientsController : ControllerBase
+[Authorize]
+public class PatientsController(VetoProDbContext context) : BaseApiController(context)
 {
-    private readonly VetoProDbContext _context;
-
-    public PatientsController(VetoProDbContext context)
-    {
-        _context = context;
-    }
-
     /// <summary>
     /// GET: api/patients
     /// Récupère la liste de tous les patients avec leurs détails.
     /// </summary>
     [HttpGet]
+    [Authorize(Roles = "Admin, Doctor")]
     public async Task<ActionResult<IEnumerable<PatientDto>>> GetAllPatients()
     {
         var patients = await _context.Patients
@@ -58,6 +52,19 @@ public class PatientsController : ControllerBase
             return NotFound("Patient non trouvé.");
         }
 
+        if (User.IsInRole("Admin") || User.IsInRole("Doctor"))
+        {
+            return Ok(patient);
+        }
+        
+        var (userContactId, errorResult) = await GetUserContactId();
+        if (errorResult != null) return errorResult;
+
+        if (patient.OwnerId != userContactId)
+        {
+            return Forbid();
+        }
+        
         return Ok(patient);
     }
 
@@ -68,9 +75,21 @@ public class PatientsController : ControllerBase
     [HttpGet("{id}/consultations")]
     public async Task<ActionResult<IEnumerable<ConsultationDto>>> GetConsultationsForPatient(Guid id)
     {
-        if (!await _context.Patients.AnyAsync(p => p.Id == id))
+        var patient = await _context.Patients.FindAsync(id);
+        if (patient == null)
         {
             return NotFound("Patient non trouvé.");
+        }
+        
+        if (!User.IsInRole("Admin") && !User.IsInRole("Doctor"))
+        {
+            var (userContactId, errorResult) = await GetUserContactId();
+            if (errorResult != null) return errorResult;
+            
+            if (patient.OwnerId != userContactId)
+            {
+                return Forbid();
+            }
         }
 
         var consultations = await _context.Consultations
@@ -90,10 +109,10 @@ public class PatientsController : ControllerBase
     /// Crée un nouveau patient.
     /// </summary>
     [HttpPost]
+    [Authorize(Roles = "Admin, Doctor")]
     public async Task<ActionResult<PatientDto>> CreatePatient([FromBody] PatientCreateDto createDto)
     {
         // 1. Valider les clés étrangères (et récupérer les entités)
-        
         var owner = await _context.Contacts.FindAsync(createDto.OwnerId);
         if (owner == null)
         {
@@ -147,6 +166,7 @@ public class PatientsController : ControllerBase
     /// Met à jour un patient existant.
     /// </summary>
     [HttpPut("{id}")]
+    [Authorize(Roles = "Admin, Doctor")]
     public async Task<IActionResult> UpdatePatient(Guid id, [FromBody] PatientUpdateDto updateDto)
     {
         // 1. Trouver le patient et ses couleurs actuelles
@@ -217,6 +237,7 @@ public class PatientsController : ControllerBase
     /// Supprime un patient.
     /// </summary>
     [HttpDelete("{id}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeletePatient(Guid id)
     {
         var patientToDelete = await _context.Patients

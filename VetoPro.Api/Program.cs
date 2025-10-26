@@ -2,6 +2,9 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using VetoPro.Api.Data;
 using VetoPro.Api.Entities;
+using System.Text;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -22,19 +25,53 @@ builder.Services.AddDbContext<VetoProDbContext>(options =>
 // Registering ASP.NET Identity
 builder.Services.AddIdentity<ApplicationUser, IdentityRole<Guid>>(options =>
     {
-        // Configurez vos options de mot de passe, etc.
+        options.SignIn.RequireConfirmedAccount = false;
         options.Password.RequireDigit = false;
         options.Password.RequiredLength = 6;
         options.Password.RequireNonAlphanumeric = false;
         options.Password.RequireUppercase = false;
         options.Password.RequireLowercase = false;
-        
-        options.SignIn.RequireConfirmedAccount = false;
     })
-    .AddEntityFrameworkStores<VetoProDbContext>();
+    .AddEntityFrameworkStores<VetoProDbContext>()
+    .AddDefaultTokenProviders();
+
+// Configuration JWT
+var jwtKey = builder.Configuration["Jwt:Key"];
+var jwtIssuer = builder.Configuration["Jwt:Issuer"];
+var jwtAudience = builder.Configuration["Jwt:Audience"];
+
+if (string.IsNullOrEmpty(jwtKey))
+{
+    throw new InvalidOperationException("JWT Secret key is missing.");
+}
 
 // Ajout des services d'authentification et autorisation
-builder.Services.AddAuthentication();
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    options.SaveToken = true; // sauvegarde le token dans le contexte
+    options.RequireHttpsMetadata = false; // mettre à true en production
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuer = true,
+        ValidateAudience = true,
+        ValidateLifetime = true, // vérifier l'expiration
+        ValidateIssuerSigningKey = true, // vérifier la signature
+
+        ValidIssuer = jwtIssuer,
+        ValidAudience = jwtAudience,
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
+
+        // Gestion du clock skew
+        ClockSkew = TimeSpan.Zero
+    };
+});
+
 builder.Services.AddAuthorization();
 
 // AutoMapper

@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using VetoPro.Api.Data;
@@ -6,22 +7,15 @@ using VetoPro.Api.Entities; // Nécessaire pour l'entité 'Color'
 
 namespace VetoPro.Api.Controllers;
 
-[ApiController]
-[Route("api/[controller]")] // Route: /api/colors
-public class ColorsController : ControllerBase
+[Authorize]
+public class ColorsController(VetoProDbContext context) : BaseApiController(context)
 {
-    private readonly VetoProDbContext _context;
-
-    public ColorsController(VetoProDbContext context)
-    {
-        _context = context;
-    }
-
     /// <summary>
     /// GET: api/colors
     /// Récupère la liste de toutes les couleurs.
     /// </summary>
     [HttpGet]
+    [AllowAnonymous]
     public async Task<ActionResult<IEnumerable<ColorDto>>> GetAllColors()
     {
         var colors = await _context.Colors
@@ -42,6 +36,7 @@ public class ColorsController : ControllerBase
     /// Récupère une couleur spécifique par son ID.
     /// </summary>
     [HttpGet("{id}")]
+    [AllowAnonymous]
     public async Task<ActionResult<ColorDto>> GetColorById(Guid id)
     {
         var color = await _context.Colors
@@ -66,6 +61,7 @@ public class ColorsController : ControllerBase
     /// Crée une nouvelle couleur.
     /// </summary>
     [HttpPost]
+    [Authorize(Roles = "Admin, Doctor")]
     public async Task<ActionResult<ColorDto>> CreateColor([FromBody] ColorCreateDto createDto)
     {
         // Vérifier si le nom existe déjà (basé sur notre contrainte unique)
@@ -104,6 +100,7 @@ public class ColorsController : ControllerBase
     /// Met à jour une couleur existante.
     /// </summary>
     [HttpPut("{id}")]
+    [Authorize(Roles = "Admin, Doctor")]
     public async Task<IActionResult> UpdateColor(Guid id, [FromBody] ColorUpdateDto updateDto)
     {
         var colorToUpdate = await _context.Colors.FindAsync(id);
@@ -151,6 +148,7 @@ public class ColorsController : ControllerBase
     /// Supprime une couleur.
     /// </summary>
     [HttpDelete("{id}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeleteColor(Guid id)
     {
         var colorToDelete = await _context.Colors.FindAsync(id);

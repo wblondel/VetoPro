@@ -4,32 +4,26 @@ using Microsoft.EntityFrameworkCore;
 using VetoPro.Api.Data;
 using VetoPro.Api.DTOs;
 using VetoPro.Api.Entities;
+using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
 
 namespace VetoPro.Api.Controllers;
 
-[ApiController]
-[Route("api/[controller]")] // Route: /api/contacts
-public class ContactsController : ControllerBase
+[Authorize]
+public class ContactsController(
+    VetoProDbContext context,
+    UserManager<ApplicationUser> userManager,
+    RoleManager<IdentityRole<Guid>> roleManager)
+    : BaseApiController(context)
 {
-    private readonly VetoProDbContext _context;
-    private readonly UserManager<ApplicationUser> _userManager;
-    private readonly RoleManager<IdentityRole<Guid>> _roleManager;
-
-    public ContactsController(
-        VetoProDbContext context,
-        UserManager<ApplicationUser> userManager,
-        RoleManager<IdentityRole<Guid>> roleManager)
-    {
-        _context = context;
-        _userManager = userManager;
-        _roleManager = roleManager;
-    }
+    private readonly RoleManager<IdentityRole<Guid>> _roleManager = roleManager;
 
     /// <summary>
     /// GET: api/contacts
     /// Récupère une liste de tous les contacts.
     /// </summary>
     [HttpGet]
+    [Authorize(Roles = "Admin, Doctor")]
     public async Task<ActionResult<IEnumerable<ContactDto>>> GetAllContacts()
     {
         var contacts = await _context.Contacts
@@ -59,14 +53,28 @@ public class ContactsController : ControllerBase
             return NotFound("Contact non trouvé.");
         }
 
+        var (userContactId, errorResult) = await GetUserContactId();
+        if (errorResult != null) return errorResult;
+
+        bool isAdmin = User.IsInRole("Admin");
+        bool isDoctor = User.IsInRole("Doctor");
+        bool isSelf = (userContactId == id); // L'utilisateur demande son *propre* profil
+
+        if (!isAdmin && !isDoctor && !isSelf)
+        {
+            return Forbid(); // 403 Forbidden
+        }
+        
         return Ok(MapToContactDto(contact));
     }
 
     /// <summary>
     /// POST: api/contacts
     /// Crée un nouveau contact, avec optionnellement un compte de connexion et des détails de staff.
+    /// (L'inscription publique est gérée par AuthController/register)
     /// </summary>
     [HttpPost]
+    [Authorize(Roles = "Admin, Doctor")]
     public async Task<ActionResult<ContactDto>> CreateContact([FromBody] ContactCreateDto createDto)
     {
         // Validation logique
@@ -85,7 +93,7 @@ public class ContactsController : ControllerBase
             if (createDto.Account != null)
             {
                 // Vérifier si l'e-mail de connexion est déjà pris
-                if (await _userManager.FindByEmailAsync(createDto.Account.LoginEmail) != null)
+                if (await userManager.FindByEmailAsync(createDto.Account.LoginEmail) != null)
                 {
                     return Conflict("Cet e-mail de connexion est déjà utilisé.");
                 }
@@ -97,7 +105,7 @@ public class ContactsController : ControllerBase
                     EmailConfirmed = true // Confirmer auto pour le dev
                 };
 
-                var identityResult = await _userManager.CreateAsync(newUser, createDto.Account.Password);
+                var identityResult = await userManager.CreateAsync(newUser, createDto.Account.Password);
 
                 if (!identityResult.Succeeded)
                 {
@@ -109,11 +117,11 @@ public class ContactsController : ControllerBase
                 if (createDto.IsStaff)
                 {
                     // Assigner le rôle "Doctor" ou "Admin" basé sur createDto.StaffDetails.Role
-                    await _userManager.AddToRoleAsync(newUser, createDto.StaffDetails!.Role); 
+                    await userManager.AddToRoleAsync(newUser, createDto.StaffDetails!.Role); 
                 }
                 else
                 {
-                    await _userManager.AddToRoleAsync(newUser, "Client");
+                    await userManager.AddToRoleAsync(newUser, "Client");
                 }
             }
 
@@ -176,11 +184,29 @@ public class ContactsController : ControllerBase
 
     /// <summary>
     /// PUT: api/contacts/{id}
-    /// Met à jour un contact existant.
+    /// Met à jour un contact existant (staff ou l'utilisateur lui-même).
     /// </summary>
     [HttpPut("{id}")]
     public async Task<IActionResult> UpdateContact(Guid id, [FromBody] ContactUpdateDto updateDto)
     {
+        var (userContactId, errorResult) = await GetUserContactId();
+        if (errorResult != null) return errorResult;
+
+        bool isAdmin = User.IsInRole("Admin");
+        bool isDoctor = User.IsInRole("Doctor");
+        bool isSelf = (userContactId == id);
+
+        if (!isAdmin && !isDoctor && !isSelf)
+        {
+            return Forbid(); // 403 Forbidden
+        }
+
+        // Règle de sécurité : un client ne peut pas se promouvoir lui-même
+        if (!isAdmin && !isDoctor && updateDto.IsStaff)
+        {
+            return Forbid("Vous n'avez pas l'autorisation de vous assigner un rôle de staff.");
+        }
+        
         var contactToUpdate = await _context.Contacts
             .Include(c => c.StaffDetails) // Charger les détails staff existants
             .FirstOrDefaultAsync(c => c.Id == id);
@@ -259,6 +285,7 @@ public class ContactsController : ControllerBase
     /// Supprime un contact (profil et compte de connexion).
     /// </summary>
     [HttpDelete("{id}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeleteContact(Guid id)
     {
         var contactToDelete = await _context.Contacts
@@ -300,10 +327,10 @@ public class ContactsController : ControllerBase
             // 3. Supprimer le compte de connexion (ApplicationUser)
             if (contactToDelete.UserId != null)
             {
-                var userToDelete = await _userManager.FindByIdAsync(contactToDelete.UserId.Value.ToString());
+                var userToDelete = await userManager.FindByIdAsync(contactToDelete.UserId.Value.ToString());
                 if (userToDelete != null)
                 {
-                    var identityResult = await _userManager.DeleteAsync(userToDelete);
+                    var identityResult = await userManager.DeleteAsync(userToDelete);
                     if (!identityResult.Succeeded)
                     {
                         await transaction.RollbackAsync();
@@ -322,8 +349,7 @@ public class ContactsController : ControllerBase
             return StatusCode(500, $"Erreur interne du serveur: {ex.Message}");
         }
     }
-
-
+    
     /// <summary>
     /// Méthode privée pour mapper une entité Contact vers un ContactDto.
     /// </summary>

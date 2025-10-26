@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using VetoPro.Api.Data;
@@ -6,22 +7,15 @@ using VetoPro.Api.Entities;
 
 namespace VetoPro.Api.Controllers;
 
-[ApiController]
-[Route("api/[controller]")] // Route: /api/pricelists
-public class PriceListsController : ControllerBase
+[Authorize]
+public class PriceListsController(VetoProDbContext context) : BaseApiController(context)
 {
-    private readonly VetoProDbContext _context;
-
-    public PriceListsController(VetoProDbContext context)
-    {
-        _context = context;
-    }
-
     /// <summary>
     /// GET: api/pricelists
     /// Récupère toutes les règles de prix, avec les noms des services et espèces.
     /// </summary>
     [HttpGet]
+    [AllowAnonymous]
     public async Task<ActionResult<IEnumerable<PriceListDto>>> GetAllPriceRules()
     {
         var priceRules = await _context.PriceList
@@ -39,6 +33,7 @@ public class PriceListsController : ControllerBase
     /// Récupère une règle de prix spécifique par son ID.
     /// </summary>
     [HttpGet("{id}")]
+    [AllowAnonymous]
     public async Task<ActionResult<PriceListDto>> GetPriceRuleById(Guid id)
     {
         var priceRule = await _context.PriceList
@@ -61,6 +56,7 @@ public class PriceListsController : ControllerBase
     /// Récupère toutes les règles de prix pour un service donné.
     /// </summary>
     [HttpGet("for-service/{serviceId}")]
+    [AllowAnonymous]
     public async Task<ActionResult<IEnumerable<PriceListDto>>> GetPriceRulesForService(Guid serviceId)
     {
         if (!await _context.Services.AnyAsync(s => s.Id == serviceId))
@@ -84,6 +80,7 @@ public class PriceListsController : ControllerBase
     /// Crée une nouvelle règle de prix.
     /// </summary>
     [HttpPost]
+    [Authorize(Roles = "Admin, Doctor")]
     public async Task<ActionResult<PriceListDto>> CreatePriceRule([FromBody] PriceListCreateDto createDto)
     {
         // 1. Valider les clés étrangères
@@ -131,6 +128,7 @@ public class PriceListsController : ControllerBase
     /// Met à jour une règle de prix existante.
     /// </summary>
     [HttpPut("{id}")]
+    [Authorize(Roles = "Admin, Doctor")]
     public async Task<IActionResult> UpdatePriceRule(Guid id, [FromBody] PriceListUpdateDto updateDto)
     {
         var ruleToUpdate = await _context.PriceList.FindAsync(id);
@@ -177,6 +175,7 @@ public class PriceListsController : ControllerBase
     /// Supprime une règle de prix.
     /// </summary>
     [HttpDelete("{id}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeletePriceRule(Guid id)
     {
         var ruleToDelete = await _context.PriceList.FindAsync(id);
@@ -193,7 +192,6 @@ public class PriceListsController : ControllerBase
 
         return NoContent();
     }
-
 
     /// <summary>
     /// Méthode privée pour mapper une entité PriceList vers un PriceListDto.

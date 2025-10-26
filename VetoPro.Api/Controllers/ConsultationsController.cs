@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using VetoPro.Api.Data;
@@ -6,17 +8,9 @@ using VetoPro.Api.Entities;
 
 namespace VetoPro.Api.Controllers;
 
-[ApiController]
-[Route("api/[controller]")] // Route: /api/consultations
-public class ConsultationsController : ControllerBase
+[Authorize]
+public class ConsultationsController(VetoProDbContext context) : BaseApiController(context)
 {
-    private readonly VetoProDbContext _context;
-
-    public ConsultationsController(VetoProDbContext context)
-    {
-        _context = context;
-    }
-
     /// <summary>
     /// GET: api/consultations/{id}
     /// Récupère une consultation (compte-rendu) par son ID.
@@ -28,16 +22,33 @@ public class ConsultationsController : ControllerBase
             .Include(c => c.Client)
             .Include(c => c.Patient)
             .Include(c => c.Doctor)
+            .Include(c => c.Appointment)
             .Where(c => c.Id == id)
-            .Select(c => MapToConsultationDto(c))
+            //.Select(c => MapToConsultationDto(c))
             .FirstOrDefaultAsync();
 
         if (consultation == null)
         {
             return NotFound("Consultation non trouvée.");
         }
+        
+        var (userContactId, errorResult) = await GetUserContactId();
+        if (errorResult != null) return errorResult;
 
-        return Ok(consultation);
+        bool isAdmin = User.IsInRole("Admin");
+        
+        // Le docteur peut être celui qui *a fait* la consult, ou celui qui était *assigné* au RDV
+        bool isDoctor = User.IsInRole("Doctor") && 
+                        (consultation.DoctorId == userContactId || consultation.Appointment?.DoctorContactId == userContactId); 
+        
+        bool isOwnerClient = consultation.ClientId == userContactId;
+
+        if (!isAdmin && !isDoctor && !isOwnerClient)
+        {
+            return Forbid(); // 403 Forbidden
+        }
+        
+        return Ok(MapToConsultationDto(consultation));
     }
 
     /// <summary>
@@ -45,6 +56,7 @@ public class ConsultationsController : ControllerBase
     /// Met à jour un compte-rendu de consultation existant.
     /// </summary>
     [HttpPut("{id}")]
+    [Authorize(Roles = "Admin, Doctor")]
     public async Task<IActionResult> UpdateConsultation(Guid id, [FromBody] ConsultationUpdateDto updateDto)
     {
         var consultationToUpdate = await _context.Consultations.FindAsync(id);
@@ -82,6 +94,7 @@ public class ConsultationsController : ControllerBase
     /// Supprime un compte-rendu de consultation.
     /// </summary>
     [HttpDelete("{id}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeleteConsultation(Guid id)
     {
         var consultationToDelete = await _context.Consultations

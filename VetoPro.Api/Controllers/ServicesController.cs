@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using VetoPro.Api.Data;
@@ -6,22 +7,15 @@ using VetoPro.Api.Entities;
 
 namespace VetoPro.Api.Controllers;
 
-[ApiController]
-[Route("api/[controller]")] // Route: /api/services
-public class ServicesController : ControllerBase
+[Authorize]
+public class ServicesController(VetoProDbContext context) : BaseApiController(context)
 {
-    private readonly VetoProDbContext _context;
-
-    public ServicesController(VetoProDbContext context)
-    {
-        _context = context;
-    }
-
     /// <summary>
     /// GET: api/services
     /// Récupère la liste de tous les services (actes).
     /// </summary>
     [HttpGet]
+    [AllowAnonymous]
     public async Task<ActionResult<IEnumerable<ServiceDto>>> GetAllServices()
     {
         var services = await _context.Services
@@ -37,6 +31,7 @@ public class ServicesController : ControllerBase
     /// Récupère un service spécifique par son ID.
     /// </summary>
     [HttpGet("{id}")]
+    [AllowAnonymous]
     public async Task<ActionResult<ServiceDto>> GetServiceById(Guid id)
     {
         var service = await _context.Services
@@ -57,6 +52,7 @@ public class ServicesController : ControllerBase
     /// Crée un nouveau service (acte).
     /// </summary>
     [HttpPost]
+    [Authorize(Roles = "Admin, Doctor")]
     public async Task<ActionResult<ServiceDto>> CreateService([FromBody] ServiceCreateDto createDto)
     {
         // Vérifier si le nom existe déjà (contrainte unique)
@@ -88,6 +84,7 @@ public class ServicesController : ControllerBase
     /// Met à jour un service existant.
     /// </summary>
     [HttpPut("{id}")]
+    [Authorize(Roles = "Admin, Doctor")]
     public async Task<IActionResult> UpdateService(Guid id, [FromBody] ServiceUpdateDto updateDto)
     {
         var serviceToUpdate = await _context.Services.FindAsync(id);
@@ -119,6 +116,7 @@ public class ServicesController : ControllerBase
     /// Supprime un service.
     /// </summary>
     [HttpDelete("{id}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeleteService(Guid id)
     {
         var serviceToDelete = await _context.Services.FindAsync(id);

@@ -3,25 +3,21 @@ using Microsoft.EntityFrameworkCore;
 using VetoPro.Api.Data;
 using VetoPro.Api.DTOs;
 using VetoPro.Api.Entities;
+using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
+
 
 namespace VetoPro.Api.Controllers;
 
-[ApiController]
-[Route("api/[controller]")] // Route: /api/invoices
-public class InvoicesController : ControllerBase
+[Authorize]
+public class InvoicesController(VetoProDbContext context) : BaseApiController(context)
 {
-    private readonly VetoProDbContext _context;
-
-    public InvoicesController(VetoProDbContext context)
-    {
-        _context = context;
-    }
-
     /// <summary>
     /// GET: api/invoices
     /// Récupère la liste de toutes les factures (sans les lignes de détail).
     /// </summary>
     [HttpGet]
+    [Authorize(Roles = "Admin, Doctor")]
     public async Task<ActionResult<IEnumerable<InvoiceDto>>> GetAllInvoices()
     {
         // Note : Ce DTO est partiel (sans les lignes) pour la performance.
@@ -59,7 +55,8 @@ public class InvoicesController : ControllerBase
             .Include(i => i.InvoiceLines) // Charger les lignes
             .Include(i => i.Payments) // Charger les paiements
             .Where(i => i.Id == id)
-            .Select(i => MapToInvoiceDto(i)) // Utiliser le mapper complet
+            // On ne map pas toute de suite, on a besoin de l'entité pour la vérification
+            //.Select(i => MapToInvoiceDto(i)) // Utiliser le mapper complet
             .FirstOrDefaultAsync();
 
         if (invoice == null)
@@ -67,7 +64,19 @@ public class InvoicesController : ControllerBase
             return NotFound("Facture non trouvée.");
         }
 
-        return Ok(invoice);
+        if (!User.IsInRole("Admin") && !User.IsInRole("Doctor"))
+        {
+            var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var userContact = await _context.Contacts.FirstOrDefaultAsync(c => c.UserId.ToString() == currentUserId);
+
+            if (invoice.Client.Id != userContact?.Id)
+            {
+                return Forbid();
+            }
+        }
+        
+        var invoiceDto = MapToInvoiceDto(invoice);
+        return Ok(invoiceDto);
     }
 
     /// <summary>
@@ -75,6 +84,7 @@ public class InvoicesController : ControllerBase
     /// Crée une nouvelle facture et ses lignes de détail.
     /// </summary>
     [HttpPost]
+    [Authorize(Roles = "Admin, Doctor")]
     public async Task<ActionResult<InvoiceDto>> CreateInvoice([FromBody] InvoiceCreateDto createDto)
     {
         // Utiliser une transaction pour garantir que la facture ET ses lignes sont créées, ou rien.
@@ -175,6 +185,7 @@ public class InvoicesController : ControllerBase
     /// Met à jour une facture et synchronise ses lignes de détail.
     /// </summary>
     [HttpPut("{id}")]
+    [Authorize(Roles = "Admin, Doctor")]
     public async Task<IActionResult> UpdateInvoice(Guid id, [FromBody] InvoiceUpdateDto updateDto)
     {
         await using var transaction = await _context.Database.BeginTransactionAsync();
@@ -276,14 +287,14 @@ public class InvoicesController : ControllerBase
 
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
-
-            return NoContent(); // 204 No Content
         }
         catch (Exception ex)
         {
             await transaction.RollbackAsync();
             return StatusCode(500, $"Erreur interne lors de la mise à jour de la facture: {ex.Message}");
         }
+        
+        return NoContent(); // 204 No Content
     }
 
     /// <summary>
@@ -291,6 +302,7 @@ public class InvoicesController : ControllerBase
     /// Supprime une facture.
     /// </summary>
     [HttpDelete("{id}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeleteInvoice(Guid id)
     {
         var invoiceToDelete = await _context.Invoices
@@ -332,11 +344,24 @@ public class InvoicesController : ControllerBase
     [HttpGet("{id}/payments")]
     public async Task<ActionResult<IEnumerable<PaymentDto>>> GetPaymentsForInvoice(Guid id)
     {
-        if (!await _context.Invoices.AnyAsync(i => i.Id == id))
+        var invoice = await _context.Invoices.FindAsync(id);
+        //if (!await _context.Invoices.AnyAsync(i => i.Id == id))
+        if (invoice == null)
         {
             return NotFound("Facture non trouvée.");
         }
+        
+        if (!User.IsInRole("Admin") && !User.IsInRole("Doctor"))
+        {
+            var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var userContact = await _context.Contacts.FirstOrDefaultAsync(c => c.UserId.ToString() == currentUserId);
 
+            if (invoice.ClientId != userContact?.Id)
+            {
+                return Forbid();
+            }
+        }
+        
         var payments = await _context.Payments
             .Where(p => p.InvoiceId == id)
             .OrderBy(p => p.PaymentDate)
@@ -351,6 +376,7 @@ public class InvoicesController : ControllerBase
     /// Enregistre un nouveau paiement pour une facture.
     /// </summary>
     [HttpPost("{id}/payments")]
+    [Authorize(Roles = "Admin, Doctor")]
     public async Task<ActionResult<PaymentDto>> CreatePaymentForInvoice(Guid id, [FromBody] PaymentCreateDto createDto)
     {
         // Vérifier que le DTO est pour la bonne facture

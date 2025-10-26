@@ -38,6 +38,8 @@ public class VetoProDbContext : IdentityDbContext<ApplicationUser, IdentityRole<
     public DbSet<InvoiceLine> InvoiceLines { get; set; }
     public DbSet<Payment> Payments { get; set; }
     
+    // Auth
+    public DbSet<RefreshToken> RefreshTokens { get; set; }
     
     public VetoProDbContext(DbContextOptions<VetoProDbContext> options) : base(options) { }
     
@@ -93,6 +95,20 @@ public class VetoProDbContext : IdentityDbContext<ApplicationUser, IdentityRole<
     {
         // Indispensable : configure les tables Identity (AspNetUsers, etc.)
         base.OnModelCreating(modelBuilder);
+        
+        // Refresh Token
+        modelBuilder.Entity<RefreshToken>(entity =>
+        {
+            // Un utilisateur peut avoir plusieurs refresh tokens (un par appareil)
+            entity.HasOne(rt => rt.User)
+                .WithMany() // pas de collection de navigation inverse sur ApplicationUser
+                .HasForeignKey(rt => rt.UserId)
+                .OnDelete(DeleteBehavior.Cascade); // si l'utilisateur est supprimé, ses tokens le sont aussi
+            
+            // le token lui-même doit être indexé pour une recherche rapide
+            entity.HasIndex(rt => rt.Token)
+                .IsUnique();
+        });
         
         // --- Configuration des Contraintes Uniques ---
         

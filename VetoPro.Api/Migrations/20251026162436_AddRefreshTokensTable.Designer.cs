@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using VetoPro.Api.Data;
 
@@ -10,9 +11,11 @@ using VetoPro.Api.Data;
 namespace VetoPro.Api.Migrations
 {
     [DbContext(typeof(VetoProDbContext))]
-    partial class VetoProDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251026162436_AddRefreshTokensTable")]
+    partial class AddRefreshTokensTable
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "9.0.10");

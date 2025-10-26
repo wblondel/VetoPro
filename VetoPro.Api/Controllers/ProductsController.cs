@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using VetoPro.Api.Data;
@@ -6,22 +7,15 @@ using VetoPro.Api.Entities;
 
 namespace VetoPro.Api.Controllers;
 
-[ApiController]
-[Route("api/[controller]")] // Route: /api/products
-public class ProductsController : ControllerBase
+[Authorize]
+public class ProductsController(VetoProDbContext context) : BaseApiController(context)
 {
-    private readonly VetoProDbContext _context;
-
-    public ProductsController(VetoProDbContext context)
-    {
-        _context = context;
-    }
-
     /// <summary>
     /// GET: api/products
     /// Récupère la liste de tous les produits (articles).
     /// </summary>
     [HttpGet]
+    [AllowAnonymous]
     public async Task<ActionResult<IEnumerable<ProductDto>>> GetAllProducts()
     {
         var products = await _context.Products
@@ -37,6 +31,7 @@ public class ProductsController : ControllerBase
     /// Récupère un produit spécifique par son ID.
     /// </summary>
     [HttpGet("{id}")]
+    [AllowAnonymous]
     public async Task<ActionResult<ProductDto>> GetProductById(Guid id)
     {
         var product = await _context.Products
@@ -57,6 +52,7 @@ public class ProductsController : ControllerBase
     /// Crée un nouveau produit (article).
     /// </summary>
     [HttpPost]
+    [Authorize(Roles = "Admin, Doctor")]
     public async Task<ActionResult<ProductDto>> CreateProduct([FromBody] ProductCreateDto createDto)
     {
         // Vérifier si le nom existe déjà (contrainte unique)
@@ -89,6 +85,7 @@ public class ProductsController : ControllerBase
     /// Met à jour un produit existant.
     /// </summary>
     [HttpPut("{id}")]
+    [Authorize(Roles = "Admin, Doctor")]
     public async Task<IActionResult> UpdateProduct(Guid id, [FromBody] ProductUpdateDto updateDto)
     {
         var productToUpdate = await _context.Products.FindAsync(id);
@@ -121,6 +118,7 @@ public class ProductsController : ControllerBase
     /// Supprime un produit.
     /// </summary>
     [HttpDelete("{id}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeleteProduct(Guid id)
     {
         var productToDelete = await _context.Products.FindAsync(id);

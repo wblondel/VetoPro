@@ -1,25 +1,22 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 using VetoPro.Api.Data;
 using VetoPro.Api.DTOs;
 using VetoPro.Api.Entities;
 
 namespace VetoPro.Api.Controllers;
 
-[ApiController]
-[Route("api/[controller]")] // Route: /api/appointments
-public class AppointmentsController : ControllerBase
+[Authorize]
+public class AppointmentsController(VetoProDbContext context) : BaseApiController(context)
 {
-    private readonly VetoProDbContext _context;
-
-    public AppointmentsController(VetoProDbContext context)
-    {
-        _context = context;
-    }
-
     /// <summary>
     /// GET: api/appointments
     /// Récupère la liste des rendez-vous.
+    /// - Admin : Voit tout.
+    /// - Doctor : Voit ses RDV assignés.
+    /// - Client : Voit ses RDV.
     /// Permet de filtrer par plage de dates (ex: ?startDate=2025-10-01&endDate=2025-10-31).
     /// </summary>
     [HttpGet]
@@ -27,6 +24,10 @@ public class AppointmentsController : ControllerBase
         [FromQuery] DateTime? startDate, 
         [FromQuery] DateTime? endDate)
     {
+        // Récupérer l'ID du contact de l'utilisateur connecté
+        var (userContactId, errorResult) = await GetUserContactId();
+        if (errorResult != null) return errorResult;
+        
         // Commencer la requête de base
         var query = _context.Appointments
             .Include(a => a.Client)
@@ -34,7 +35,22 @@ public class AppointmentsController : ControllerBase
             .Include(a => a.Doctor) // Le docteur est optionnel, Include gère le 'null'
             .OrderBy(a => a.StartAt)
             .AsQueryable(); // Rendre "queryable" pour ajouter des filtres
-
+        
+        if (User.IsInRole("Admin"))
+        {
+            // L'Admin voit tout, aucun filtre
+        }
+        else if (User.IsInRole("Doctor"))
+        {
+            // Le Docteur voit ses RDV assignés
+            query = query.Where(a => a.DoctorContactId == userContactId);
+        }
+        else // "Client"
+        {
+            // Le Client voit ses RDV
+            query = query.Where(a => a.ClientId == userContactId);
+        }
+        
         // Appliquer les filtres de date s'ils sont fournis
         if (startDate != null)
         {
@@ -66,16 +82,26 @@ public class AppointmentsController : ControllerBase
             .Include(a => a.Client)
             .Include(a => a.Patient)
             .Include(a => a.Doctor)
-            .Where(a => a.Id == id)
-            .Select(a => MapToAppointmentDto(a)) // Mapper avant de récupérer
-            .FirstOrDefaultAsync();
+            .FirstOrDefaultAsync(a => a.Id == id);
 
         if (appointment == null)
         {
             return NotFound("Rendez-vous non trouvé.");
         }
-
-        return Ok(appointment);
+        
+        var (userContactId, errorResult) = await GetUserContactId();
+        if (errorResult != null) return errorResult;
+        
+        bool isAdmin = User.IsInRole("Admin");
+        bool isAssignedDoctor = User.IsInRole("Doctor") && appointment.DoctorContactId == userContactId;
+        bool isOwnerClient = appointment.ClientId == userContactId;
+        
+        if (!isAdmin && !isAssignedDoctor && !isOwnerClient)
+        {
+            return Forbid(); // 403 Forbidden
+        }
+        
+        return Ok(MapToAppointmentDto(appointment));
     }
 
     /// <summary>
@@ -85,6 +111,18 @@ public class AppointmentsController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<AppointmentDto>> CreateAppointment([FromBody] AppointmentCreateDto createDto)
     {
+        var (userContactId, errorResult) = await GetUserContactId();
+        if (errorResult != null) return errorResult;
+        
+        // Si l'utilisateur n'est PAS du staff, on force le ClientId à être le sien.
+        if (!User.IsInRole("Admin") && !User.IsInRole("Doctor"))
+        {
+            if (createDto.ClientId != userContactId)
+            {
+                return Forbid("Vous ne pouvez créer des rendez-vous que pour vous-même.");
+            }
+        }
+        
         // 1. Valider la logique des dates
         if (createDto.StartAt >= createDto.EndAt)
         {
@@ -130,7 +168,11 @@ public class AppointmentsController : ControllerBase
             .Include(a => a.Doctor)
             .FirstAsync(a => a.Id == newAppointment.Id);
 
-        return CreatedAtAction(nameof(GetAppointmentById), new { id = createdAppointment.Id }, MapToAppointmentDto(createdAppointment));
+        return CreatedAtAction(
+            nameof(GetAppointmentById),
+            new { id = createdAppointment.Id },
+            MapToAppointmentDto(createdAppointment)
+        );
     }
 
     /// <summary>
@@ -146,7 +188,25 @@ public class AppointmentsController : ControllerBase
         {
             return NotFound("Rendez-vous non trouvé.");
         }
+        
+        var (userContactId, errorResult) = await GetUserContactId();
+        if (errorResult != null) return errorResult;
 
+        bool isAdmin = User.IsInRole("Admin");
+        bool isAssignedDoctor = User.IsInRole("Doctor") && appointmentToUpdate.DoctorContactId == userContactId;
+        bool isOwnerClient = appointmentToUpdate.ClientId == userContactId;
+
+        if (!isAdmin && !isAssignedDoctor && !isOwnerClient)
+        {
+            return Forbid("Vous n'avez pas l'autorisation de modifier ce rendez-vous.");
+        }
+        
+        // Un client ne peut pas réassigner le RDV à quelqu'un d'autre
+        if (!isAdmin && !isAssignedDoctor && updateDto.ClientId != userContactId)
+        {
+            return Forbid("Vous ne pouvez pas assigner ce rendez-vous à un autre client.");
+        }
+        
         // 1. Valider la logique des dates
         if (updateDto.StartAt >= updateDto.EndAt)
         {
@@ -192,6 +252,7 @@ public class AppointmentsController : ControllerBase
     /// Supprime un rendez-vous.
     /// </summary>
     [HttpDelete("{id}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeleteAppointment(Guid id)
     {
         var appointmentToDelete = await _context.Appointments
@@ -224,9 +285,19 @@ public class AppointmentsController : ControllerBase
     public async Task<ActionResult<ConsultationDto>> GetConsultationForAppointment(Guid id)
     {
         // On vérifie d'abord si le RDV existe
-        if (!await _context.Appointments.AnyAsync(a => a.Id == id))
+        var appointment = await _context.Appointments.FindAsync(id);
+        if (appointment == null) return NotFound("Rendez-vous non trouvé.");
+        
+        var (userContactId, errorResult) = await GetUserContactId();
+        if (errorResult != null) return errorResult;
+
+        bool isAdmin = User.IsInRole("Admin");
+        bool isAssignedDoctor = User.IsInRole("Doctor") && appointment.DoctorContactId == userContactId;
+        bool isOwnerClient = appointment.ClientId == userContactId;
+
+        if (!isAdmin && !isAssignedDoctor && !isOwnerClient)
         {
-            return NotFound("Rendez-vous non trouvé.");
+            return Forbid();
         }
         
         var consultation = await _context.Consultations
@@ -234,7 +305,7 @@ public class AppointmentsController : ControllerBase
             .Include(c => c.Patient)
             .Include(c => c.Doctor)
             .Where(c => c.AppointmentId == id)
-            .Select(c => MapToConsultationDto(c)) // Utiliser la méthode privée de mapping
+            .Select(c => MapToConsultationDto(c))
             .FirstOrDefaultAsync(); // Une seule consultation par RDV
 
         if (consultation == null)
@@ -250,6 +321,7 @@ public class AppointmentsController : ControllerBase
     /// Crée un compte-rendu de consultation pour un rendez-vous existant.
     /// </summary>
     [HttpPost("{id}/consultation")]
+    [Authorize(Roles = "Admin, Doctor")]
     public async Task<ActionResult<ConsultationDto>> CreateConsultationForAppointment(Guid id, [FromBody] ConsultationCreateDto createDto)
     {
         // 1. Trouver le rendez-vous parent
@@ -311,16 +383,17 @@ public class AppointmentsController : ControllerBase
         newConsultation.Client = client!;
         newConsultation.Doctor = doctor;
 
-        var consultationDto = MapToConsultationDto(newConsultation); // Utiliser la méthode privée
+        var consultationDto = MapToConsultationDto(newConsultation);
 
         // Renvoie une URL vers le endpoint GetById du *ConsultationsController*
         return CreatedAtAction(
             "GetConsultationById", // Nom de l'action
             "Consultations",       // Nom du contrôleur
             new { id = consultationDto.Id }, // Paramètres de route
-            consultationDto);
+            consultationDto
+        );
     }
-
+    
     /// <summary>
     /// Méthode privée pour mapper une entité Appointment vers un AppointmentDto.
     /// S'attend à ce que a.Client, a.Patient, et a.Doctor soient pré-chargés.
