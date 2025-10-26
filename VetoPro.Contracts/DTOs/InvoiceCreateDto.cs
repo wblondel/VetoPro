@@ -1,0 +1,40 @@
+using System.ComponentModel.DataAnnotations;
+
+namespace VetoPro.Contracts.DTOs;
+
+/// <summary>
+/// DTO pour la création d'une nouvelle facture (Invoice).
+/// Inclut la liste des lignes de détail (Invoice Lines).
+/// </summary>
+public class InvoiceCreateDto
+{
+    [Required(ErrorMessage = "L'ID du client (ClientId) est obligatoire.")]
+    public Guid ClientId { get; set; }
+
+    /// <summary>
+    /// ID optionnel de la consultation qui a généré cette facture.
+    /// </summary>
+    public Guid? ConsultationId { get; set; }
+
+    [Required(ErrorMessage = "Le numéro de facture (InvoiceNumber) est obligatoire.")]
+    [MaxLength(50)]
+    public string InvoiceNumber { get; set; }
+
+    [Required(ErrorMessage = "La date d'émission (IssueDate) est obligatoire.")]
+    public DateOnly IssueDate { get; set; }
+
+    [Required(ErrorMessage = "La date d'échéance (DueDate) est obligatoire.")]
+    public DateOnly DueDate { get; set; }
+
+    [Required(ErrorMessage = "Le statut (Status) est obligatoire.")]
+    [MaxLength(50)]
+    public string Status { get; set; } = "Draft"; // Valeur par défaut
+
+    /// <summary>
+    /// Liste des lignes de détail de la facture.
+    /// Doit contenir au moins une ligne.
+    /// </summary>
+    [Required]
+    [MinLength(1, ErrorMessage = "La facture doit contenir au moins une ligne.")]
+    public ICollection<InvoiceLineCreateDto> InvoiceLines { get; set; } = new List<InvoiceLineCreateDto>();
+}

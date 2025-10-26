@@ -1,4 +1,4 @@
-using VetoPro.Api.DTOs;
+using VetoPro.Contracts.DTOs;
 using VetoPro.Api.Entities;
 
 namespace VetoPro.Api.Mapping;

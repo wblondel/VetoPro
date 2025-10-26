@@ -21,4 +21,8 @@
         </PackageReference>
         <PackageReference Include="CommunityToolkit.Mvvm"/>
     </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\VetoPro.Contracts\VetoPro.Contracts.csproj" />
+    </ItemGroup>
 </Project>

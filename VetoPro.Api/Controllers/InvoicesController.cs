@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using VetoPro.Api.Data;
-using VetoPro.Api.DTOs;
+using VetoPro.Contracts.DTOs;
 using VetoPro.Api.Entities;
 using Microsoft.AspNetCore.Authorization;
 using System.Security.Claims;

@@ -8,7 +8,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using VetoPro.Api.Data;
-using VetoPro.Api.DTOs.Auth;
+using VetoPro.Contracts.DTOs.Auth;
 using VetoPro.Api.Entities;
 
 namespace VetoPro.Api.Controllers;

@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using VetoPro.Api.Data;
-using VetoPro.Api.DTOs;
+using VetoPro.Contracts.DTOs;
 using VetoPro.Api.Mapping;
 
 namespace VetoPro.Api.Controllers;
