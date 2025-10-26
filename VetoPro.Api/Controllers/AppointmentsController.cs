@@ -1,10 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using System.Security.Claims;
 using VetoPro.Api.Data;
 using VetoPro.Api.DTOs;
 using VetoPro.Api.Entities;
+using VetoPro.Api.Mapping;
 
 namespace VetoPro.Api.Controllers;
 
@@ -65,7 +65,7 @@ public class AppointmentsController(VetoProDbContext context) : BaseApiControlle
 
         // Exécuter la requête finale et mapper les résultats en DTO
         var appointments = await query
-            .Select(a => MapToAppointmentDto(a))
+            .Select(a => a.ToDto())
             .ToListAsync();
 
         return Ok(appointments);
@@ -101,7 +101,7 @@ public class AppointmentsController(VetoProDbContext context) : BaseApiControlle
             return Forbid(); // 403 Forbidden
         }
         
-        return Ok(MapToAppointmentDto(appointment));
+        return Ok(appointment.ToDto());
     }
 
     /// <summary>
@@ -171,7 +171,7 @@ public class AppointmentsController(VetoProDbContext context) : BaseApiControlle
         return CreatedAtAction(
             nameof(GetAppointmentById),
             new { id = createdAppointment.Id },
-            MapToAppointmentDto(createdAppointment)
+            createdAppointment.ToDto()
         );
     }
 
@@ -305,7 +305,7 @@ public class AppointmentsController(VetoProDbContext context) : BaseApiControlle
             .Include(c => c.Patient)
             .Include(c => c.Doctor)
             .Where(c => c.AppointmentId == id)
-            .Select(c => MapToConsultationDto(c))
+            .Select(c => c.ToDto())
             .FirstOrDefaultAsync(); // Une seule consultation par RDV
 
         if (consultation == null)
@@ -383,7 +383,7 @@ public class AppointmentsController(VetoProDbContext context) : BaseApiControlle
         newConsultation.Client = client!;
         newConsultation.Doctor = doctor;
 
-        var consultationDto = MapToConsultationDto(newConsultation);
+        var consultationDto = newConsultation.ToDto();
 
         // Renvoie une URL vers le endpoint GetById du *ConsultationsController*
         return CreatedAtAction(
@@ -392,55 +392,5 @@ public class AppointmentsController(VetoProDbContext context) : BaseApiControlle
             new { id = consultationDto.Id }, // Paramètres de route
             consultationDto
         );
-    }
-    
-    /// <summary>
-    /// Méthode privée pour mapper une entité Appointment vers un AppointmentDto.
-    /// S'attend à ce que a.Client, a.Patient, et a.Doctor soient pré-chargés.
-    /// </summary>
-    private static AppointmentDto MapToAppointmentDto(Appointment a)
-    {
-        return new AppointmentDto
-        {
-            Id = a.Id,
-            StartAt = a.StartAt, // EF Core gère la conversion UTC -> Local si nécessaire
-            EndAt = a.EndAt,
-            Reason = a.Reason,
-            Notes = a.Notes,
-            Status = a.Status,
-            ClientId = a.ClientId,
-            ClientName = $"{a.Client.FirstName} {a.Client.LastName}",
-            PatientId = a.PatientId,
-            PatientName = a.Patient.Name,
-            DoctorId = a.DoctorContactId,
-            // Gérer le docteur optionnel
-            DoctorName = a.Doctor != null ? $"{a.Doctor.FirstName} {a.Doctor.LastName}" : null
-        };
-    }
-    
-    /// <summary>
-    /// Méthode privée (dupliquée) pour mapper Consultation vers ConsultationDto.
-    /// S'attend à ce que c.Client, c.Patient, et c.Doctor soient pré-chargés.
-    /// </summary>
-    private static ConsultationDto MapToConsultationDto(Consultation c)
-    {
-        return new ConsultationDto
-        {
-            Id = c.Id,
-            AppointmentId = c.AppointmentId,
-            ConsultationDate = c.ConsultationDate,
-            ClientId = c.ClientId,
-            ClientName = $"{c.Client.FirstName} {c.Client.LastName}",
-            PatientId = c.PatientId,
-            PatientName = c.Patient.Name,
-            DoctorId = c.DoctorId,
-            DoctorName = $"{c.Doctor.FirstName} {c.Doctor.LastName}",
-            WeightKg = c.WeightKg,
-            TemperatureCelsius = c.TemperatureCelsius,
-            ClinicalExam = c.ClinicalExam,
-            Diagnosis = c.Diagnosis,
-            Treatment = c.Treatment,
-            Prescriptions = c.Prescriptions
-        };
     }
 }

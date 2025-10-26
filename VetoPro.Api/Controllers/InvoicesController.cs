@@ -5,6 +5,7 @@ using VetoPro.Api.DTOs;
 using VetoPro.Api.Entities;
 using Microsoft.AspNetCore.Authorization;
 using System.Security.Claims;
+using VetoPro.Api.Mapping;
 
 
 namespace VetoPro.Api.Controllers;
@@ -56,7 +57,6 @@ public class InvoicesController(VetoProDbContext context) : BaseApiController(co
             .Include(i => i.Payments) // Charger les paiements
             .Where(i => i.Id == id)
             // On ne map pas toute de suite, on a besoin de l'entité pour la vérification
-            //.Select(i => MapToInvoiceDto(i)) // Utiliser le mapper complet
             .FirstOrDefaultAsync();
 
         if (invoice == null)
@@ -75,7 +75,7 @@ public class InvoicesController(VetoProDbContext context) : BaseApiController(co
             }
         }
         
-        var invoiceDto = MapToInvoiceDto(invoice);
+        var invoiceDto = invoice.ToDto();
         return Ok(invoiceDto);
     }
 
@@ -171,7 +171,7 @@ public class InvoicesController(VetoProDbContext context) : BaseApiController(co
                 .Include(i => i.Payments)
                 .FirstAsync(i => i.Id == newInvoice.Id);
 
-            return CreatedAtAction(nameof(GetInvoiceById), new { id = createdInvoice.Id }, MapToInvoiceDto(createdInvoice));
+            return CreatedAtAction(nameof(GetInvoiceById), new { id = createdInvoice.Id }, createdInvoice.ToDto());
         }
         catch (Exception ex)
         {
@@ -365,7 +365,7 @@ public class InvoicesController(VetoProDbContext context) : BaseApiController(co
         var payments = await _context.Payments
             .Where(p => p.InvoiceId == id)
             .OrderBy(p => p.PaymentDate)
-            .Select(p => MapToPaymentDto(p))
+            .Select(p => p.ToDto())
             .ToListAsync();
 
         return Ok(payments);
@@ -433,7 +433,7 @@ public class InvoicesController(VetoProDbContext context) : BaseApiController(co
         await _context.SaveChangesAsync();
 
         // 3. Mapper et renvoyer le DTO
-        var paymentDto = MapToPaymentDto(newPayment);
+        var paymentDto = newPayment.ToDto();
 
         // Renvoie une URL vers le endpoint GetById du *PaymentsController*
         return CreatedAtAction(
@@ -441,54 +441,5 @@ public class InvoicesController(VetoProDbContext context) : BaseApiController(co
             "Payments",            // Nom du contrôleur
             new { id = paymentDto.Id }, // Paramètres de route
             paymentDto);
-    }
-
-    /// <summary>
-    /// Méthode privée pour mapper une entité Invoice vers un InvoiceDto.
-    /// S'attend à ce que i.Client, i.InvoiceLines, et i.Payments soient pré-chargés.
-    /// </summary>
-    private static InvoiceDto MapToInvoiceDto(Invoice i)
-    {
-        return new InvoiceDto
-        {
-            Id = i.Id,
-            InvoiceNumber = i.InvoiceNumber,
-            IssueDate = i.IssueDate,
-            DueDate = i.DueDate,
-            TotalAmount = i.TotalAmount,
-            Status = i.Status,
-            ClientId = i.ClientId,
-            ClientName = $"{i.Client.FirstName} {i.Client.LastName}",
-            ConsultationId = i.ConsultationId,
-            // Mapper les lignes
-            InvoiceLines = i.InvoiceLines.Select(line => new InvoiceLineDto
-            {
-                Id = line.Id,
-                ItemId = line.ServiceId ?? line.ProductId,
-                ItemType = line.ServiceId.HasValue ? "Service" : "Product",
-                Description = line.Description,
-                Quantity = line.Quantity,
-                UnitPrice = line.UnitPrice,
-                LineTotal = line.LineTotal
-            }).ToList(),
-            // Calculer le total payé
-            AmountPaid = i.Payments.Sum(p => p.Amount)
-        };
-    }
-    
-    /// <summary>
-    /// Méthode privée pour mapper une entité Payment vers un PaymentDto.
-    /// </summary>
-    private static PaymentDto MapToPaymentDto(Payment p)
-    {
-        return new PaymentDto
-        {
-            Id = p.Id,
-            InvoiceId = p.InvoiceId,
-            PaymentDate = p.PaymentDate,
-            Amount = p.Amount,
-            PaymentMethod = p.PaymentMethod,
-            TransactionId = p.TransactionId
-        };
     }
 }

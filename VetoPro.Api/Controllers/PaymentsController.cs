@@ -5,6 +5,7 @@ using VetoPro.Api.Data;
 using VetoPro.Api.DTOs;
 using VetoPro.Api.Entities;
 using System.Security.Claims;
+using VetoPro.Api.Mapping;
 
 namespace VetoPro.Api.Controllers;
 
@@ -40,7 +41,7 @@ public class PaymentsController(VetoProDbContext context) : BaseApiController(co
             return Forbid(); // 403 Forbidden
         }
         
-        return Ok(MapToPaymentDto(payment));
+        return Ok(payment.ToDto());
     }
 
     /// <summary>
@@ -85,21 +86,5 @@ public class PaymentsController(VetoProDbContext context) : BaseApiController(co
         await _context.SaveChangesAsync();
 
         return NoContent(); // 204 No Content
-    }
-    
-    /// <summary>
-    /// Méthode privée pour mapper une entité Payment vers un PaymentDto.
-    /// </summary>
-    private static PaymentDto MapToPaymentDto(Payment p)
-    {
-        return new PaymentDto
-        {
-            Id = p.Id,
-            InvoiceId = p.InvoiceId,
-            PaymentDate = p.PaymentDate,
-            Amount = p.Amount,
-            PaymentMethod = p.PaymentMethod,
-            TransactionId = p.TransactionId
-        };
     }
 }

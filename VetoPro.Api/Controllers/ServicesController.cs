@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using VetoPro.Api.Data;
 using VetoPro.Api.DTOs;
 using VetoPro.Api.Entities;
+using VetoPro.Api.Mapping;
 
 namespace VetoPro.Api.Controllers;
 
@@ -20,7 +21,7 @@ public class ServicesController(VetoProDbContext context) : BaseApiController(co
     {
         var services = await _context.Services
             .OrderBy(s => s.Name)
-            .Select(s => MapToServiceDto(s))
+            .Select(s => s.ToDto())
             .ToListAsync();
 
         return Ok(services);
@@ -36,7 +37,7 @@ public class ServicesController(VetoProDbContext context) : BaseApiController(co
     {
         var service = await _context.Services
             .Where(s => s.Id == id)
-            .Select(s => MapToServiceDto(s))
+            .Select(s => s.ToDto())
             .FirstOrDefaultAsync();
 
         if (service == null)
@@ -74,7 +75,7 @@ public class ServicesController(VetoProDbContext context) : BaseApiController(co
         await _context.SaveChangesAsync();
 
         // Mapper l'entité créée vers le DTO de retour
-        var serviceDto = MapToServiceDto(newService);
+        var serviceDto = newService.ToDto();
 
         return CreatedAtAction(nameof(GetServiceById), new { id = serviceDto.Id }, serviceDto);
     }
@@ -144,21 +145,5 @@ public class ServicesController(VetoProDbContext context) : BaseApiController(co
         await _context.SaveChangesAsync();
 
         return NoContent();
-    }
-
-
-    /// <summary>
-    /// Méthode privée pour mapper une entité Service vers un ServiceDto.
-    /// </summary>
-    private static ServiceDto MapToServiceDto(Service s)
-    {
-        return new ServiceDto
-        {
-            Id = s.Id,
-            Name = s.Name,
-            Description = s.Description,
-            IsActive = s.IsActive,
-            RequiresPatient = s.RequiresPatient
-        };
     }
 }

@@ -6,6 +6,7 @@ using VetoPro.Api.DTOs;
 using VetoPro.Api.Entities;
 using Microsoft.AspNetCore.Authorization;
 using System.Security.Claims;
+using VetoPro.Api.Mapping;
 
 namespace VetoPro.Api.Controllers;
 
@@ -30,7 +31,7 @@ public class ContactsController(
             .Include(c => c.User) // Inclure le compte de connexion
             .Include(c => c.StaffDetails) // Inclure les détails du staff
             .OrderBy(c => c.LastName).ThenBy(c => c.FirstName)
-            .Select(c => MapToContactDto(c)) // Utiliser une méthode de mapping
+            .Select(c => c.ToDto()) // Utiliser une méthode de mapping
             .ToListAsync();
             
         return Ok(contacts);
@@ -65,7 +66,7 @@ public class ContactsController(
             return Forbid(); // 403 Forbidden
         }
         
-        return Ok(MapToContactDto(contact));
+        return Ok(contact.ToDto());
     }
 
     /// <summary>
@@ -130,7 +131,7 @@ public class ContactsController(
             {
                 FirstName = createDto.FirstName,
                 LastName = createDto.LastName,
-                Email = createDto.ContactEmail,
+                Email = createDto.Email,
                 PhoneNumber = createDto.PhoneNumber,
                 AddressLine1 = createDto.AddressLine1,
                 City = createDto.City,
@@ -171,7 +172,7 @@ public class ContactsController(
 
             // 5. Remplir le DTO de retour et renvoyer 201 Created
             newContact.User = newUser; // Attacher l'utilisateur pour le mapping
-            var contactDto = MapToContactDto(newContact);
+            var contactDto = newContact.ToDto();
 
             return CreatedAtAction(nameof(GetContactById), new { id = contactDto.Id }, contactDto);
         }
@@ -219,7 +220,7 @@ public class ContactsController(
         // Appliquer les modifications du profil de base
         contactToUpdate.FirstName = updateDto.FirstName;
         contactToUpdate.LastName = updateDto.LastName;
-        contactToUpdate.Email = updateDto.ContactEmail;
+        contactToUpdate.Email = updateDto.Email;
         contactToUpdate.PhoneNumber = updateDto.PhoneNumber;
         contactToUpdate.AddressLine1 = updateDto.AddressLine1;
         contactToUpdate.City = updateDto.City;
@@ -348,36 +349,5 @@ public class ContactsController(
             await transaction.RollbackAsync();
             return StatusCode(500, $"Erreur interne du serveur: {ex.Message}");
         }
-    }
-    
-    /// <summary>
-    /// Méthode privée pour mapper une entité Contact vers un ContactDto.
-    /// </summary>
-    private static ContactDto MapToContactDto(Contact contact)
-    {
-        return new ContactDto
-        {
-            Id = contact.Id,
-            LoginEmail = contact.User?.Email, // Email du compte Identity
-            FirstName = contact.FirstName,
-            LastName = contact.LastName,
-            ContactEmail = contact.Email, // Email du profil
-            PhoneNumber = contact.PhoneNumber,
-            AddressLine1 = contact.AddressLine1,
-            City = contact.City,
-            PostalCode = contact.PostalCode,
-            Country = contact.Country,
-            IsOwner = contact.IsOwner,
-            IsClient = contact.IsClient,
-            IsStaff = contact.IsStaff,
-            StaffDetails = contact.StaffDetails == null ? null : new StaffDetailsDto
-            {
-                Id = contact.StaffDetails.Id,
-                Role = contact.StaffDetails.Role,
-                LicenseNumber = contact.StaffDetails.LicenseNumber,
-                Specialty = contact.StaffDetails.Specialty,
-                IsActive = contact.StaffDetails.IsActive
-            }
-        };
     }
 }

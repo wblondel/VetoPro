@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using VetoPro.Api.Data;
 using VetoPro.Api.DTOs;
 using VetoPro.Api.Entities;
+using VetoPro.Mapping;
 
 namespace VetoPro.Api.Controllers;
 
@@ -22,7 +23,7 @@ public class PriceListsController(VetoProDbContext context) : BaseApiController(
             .Include(pl => pl.Service) // Jointure avec Services
             .Include(pl => pl.Species) // Jointure avec Species (gère les null)
             .OrderBy(pl => pl.Service.Name).ThenBy(pl => pl.Species.Name)
-            .Select(pl => MapToPriceListDto(pl))
+            .Select(pl => pl.ToDto())
             .ToListAsync();
 
         return Ok(priceRules);
@@ -40,7 +41,7 @@ public class PriceListsController(VetoProDbContext context) : BaseApiController(
             .Include(pl => pl.Service)
             .Include(pl => pl.Species)
             .Where(pl => pl.Id == id)
-            .Select(pl => MapToPriceListDto(pl))
+            .Select(pl => pl.ToDto())
             .FirstOrDefaultAsync();
 
         if (priceRule == null)
@@ -69,7 +70,7 @@ public class PriceListsController(VetoProDbContext context) : BaseApiController(
             .Include(pl => pl.Species)
             .Where(pl => pl.ServiceId == serviceId)
             .OrderBy(pl => pl.Species.Name).ThenBy(pl => pl.WeightMinKg)
-            .Select(pl => MapToPriceListDto(pl))
+            .Select(pl => pl.ToDto())
             .ToListAsync();
 
         return Ok(priceRules);
@@ -120,7 +121,7 @@ public class PriceListsController(VetoProDbContext context) : BaseApiController(
             .Include(pl => pl.Species)
             .FirstAsync(pl => pl.Id == newPriceRule.Id);
 
-        return CreatedAtAction(nameof(GetPriceRuleById), new { id = createdPriceRule.Id }, MapToPriceListDto(createdPriceRule));
+        return CreatedAtAction(nameof(GetPriceRuleById), new { id = createdPriceRule.Id }, createdPriceRule.ToDto());
     }
 
     /// <summary>
@@ -191,26 +192,5 @@ public class PriceListsController(VetoProDbContext context) : BaseApiController(
         await _context.SaveChangesAsync();
 
         return NoContent();
-    }
-
-    /// <summary>
-    /// Méthode privée pour mapper une entité PriceList vers un PriceListDto.
-    /// S'attend à ce que pl.Service et pl.Species soient pré-chargés.
-    /// </summary>
-    private static PriceListDto MapToPriceListDto(PriceList pl)
-    {
-        return new PriceListDto
-        {
-            Id = pl.Id,
-            ServiceId = pl.ServiceId,
-            ServiceName = pl.Service.Name,
-            SpeciesId = pl.SpeciesId,
-            SpeciesName = pl.Species?.Name, // 'Species' peut être null
-            WeightMinKg = pl.WeightMinKg,
-            WeightMaxKg = pl.WeightMaxKg,
-            Amount = pl.Amount,
-            Currency = pl.Currency,
-            IsActive = pl.IsActive
-        };
     }
 }

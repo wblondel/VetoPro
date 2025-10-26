@@ -1,10 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
-using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using VetoPro.Api.Data;
 using VetoPro.Api.DTOs;
-using VetoPro.Api.Entities;
+using VetoPro.Api.Mapping;
 
 namespace VetoPro.Api.Controllers;
 
@@ -24,7 +23,6 @@ public class ConsultationsController(VetoProDbContext context) : BaseApiControll
             .Include(c => c.Doctor)
             .Include(c => c.Appointment)
             .Where(c => c.Id == id)
-            //.Select(c => MapToConsultationDto(c))
             .FirstOrDefaultAsync();
 
         if (consultation == null)
@@ -48,7 +46,7 @@ public class ConsultationsController(VetoProDbContext context) : BaseApiControll
             return Forbid(); // 403 Forbidden
         }
         
-        return Ok(MapToConsultationDto(consultation));
+        return Ok(consultation.ToDto());
     }
 
     /// <summary>
@@ -116,31 +114,5 @@ public class ConsultationsController(VetoProDbContext context) : BaseApiControll
         await _context.SaveChangesAsync();
 
         return NoContent();
-    }
-    
-    /// <summary>
-    /// Méthode privée pour mapper une entité Consultation vers un ConsultationDto.
-    /// S'attend à ce que c.Client, c.Patient, et c.Doctor soient pré-chargés.
-    /// </summary>
-    private static ConsultationDto MapToConsultationDto(Consultation c)
-    {
-        return new ConsultationDto
-        {
-            Id = c.Id,
-            AppointmentId = c.AppointmentId,
-            ConsultationDate = c.ConsultationDate,
-            ClientId = c.ClientId,
-            ClientName = $"{c.Client.FirstName} {c.Client.LastName}",
-            PatientId = c.PatientId,
-            PatientName = c.Patient.Name,
-            DoctorId = c.DoctorId,
-            DoctorName = $"{c.Doctor.FirstName} {c.Doctor.LastName}",
-            WeightKg = c.WeightKg,
-            TemperatureCelsius = c.TemperatureCelsius,
-            ClinicalExam = c.ClinicalExam,
-            Diagnosis = c.Diagnosis,
-            Treatment = c.Treatment,
-            Prescriptions = c.Prescriptions
-        };
     }
 }

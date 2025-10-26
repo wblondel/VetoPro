@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using VetoPro.Api.Data;
 using VetoPro.Api.DTOs;
 using VetoPro.Api.Entities;
+using VetoPro.Api.Mapping;
 
 namespace VetoPro.Api.Controllers;
 
@@ -20,7 +21,7 @@ public class ProductsController(VetoProDbContext context) : BaseApiController(co
     {
         var products = await _context.Products
             .OrderBy(p => p.Name)
-            .Select(p => MapToProductDto(p))
+            .Select(p => p.ToDto())
             .ToListAsync();
 
         return Ok(products);
@@ -36,7 +37,7 @@ public class ProductsController(VetoProDbContext context) : BaseApiController(co
     {
         var product = await _context.Products
             .Where(p => p.Id == id)
-            .Select(p => MapToProductDto(p))
+            .Select(p => p.ToDto())
             .FirstOrDefaultAsync();
 
         if (product == null)
@@ -75,7 +76,7 @@ public class ProductsController(VetoProDbContext context) : BaseApiController(co
         await _context.SaveChangesAsync();
 
         // Mapper l'entité créée vers le DTO de retour
-        var productDto = MapToProductDto(newProduct);
+        var productDto = newProduct.ToDto();
 
         return CreatedAtAction(nameof(GetProductById), new { id = productDto.Id }, productDto);
     }
@@ -139,22 +140,5 @@ public class ProductsController(VetoProDbContext context) : BaseApiController(co
         await _context.SaveChangesAsync();
 
         return NoContent();
-    }
-
-
-    /// <summary>
-    /// Méthode privée pour mapper une entité Product vers un ProductDto.
-    /// </summary>
-    private static ProductDto MapToProductDto(Product p)
-    {
-        return new ProductDto
-        {
-            Id = p.Id,
-            Name = p.Name,
-            Description = p.Description,
-            StockQuantity = p.StockQuantity,
-            UnitPrice = p.UnitPrice,
-            IsActive = p.IsActive
-        };
     }
 }

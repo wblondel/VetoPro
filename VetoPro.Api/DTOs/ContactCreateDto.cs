@@ -18,7 +18,7 @@ public class ContactCreateDto
     public string LastName { get; set; }
 
     [EmailAddress]
-    public string? ContactEmail { get; set; } // Email de contact (profil)
+    public string? Email { get; set; } // Email de contact (profil)
 
     [Phone]
     public string? PhoneNumber { get; set; }

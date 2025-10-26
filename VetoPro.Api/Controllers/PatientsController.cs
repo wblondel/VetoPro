@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using VetoPro.Api.Data;
 using VetoPro.Api.DTOs;
 using VetoPro.Api.Entities;
+using VetoPro.Api.Mapping;
 
 namespace VetoPro.Api.Controllers;
 
@@ -25,7 +26,7 @@ public class PatientsController(VetoProDbContext context) : BaseApiController(co
                 .ThenInclude(b => b.Species) // Jointure imbriquée avec Species
             .Include(p => p.Colors) // Jointure avec Colors (M2M)
             .OrderBy(p => p.Name)
-            .Select(p => MapToPatientDto(p)) // Utiliser la méthode de mapping
+            .Select(p => p.ToDto()) // Utiliser la méthode de mapping
             .ToListAsync();
 
         return Ok(patients);
@@ -44,7 +45,7 @@ public class PatientsController(VetoProDbContext context) : BaseApiController(co
                 .ThenInclude(b => b.Species)
             .Include(p => p.Colors)
             .Where(p => p.Id == id)
-            .Select(p => MapToPatientDto(p))
+            .Select(p => p.ToDto())
             .FirstOrDefaultAsync();
 
         if (patient == null)
@@ -98,7 +99,7 @@ public class PatientsController(VetoProDbContext context) : BaseApiController(co
             .Include(c => c.Doctor)
             .Where(c => c.PatientId == id) // Filtrer par l'ID du patient
             .OrderByDescending(c => c.ConsultationDate) // Du plus récent au plus ancien
-            .Select(c => MapToConsultationDto(c)) // Utiliser le mapper de consultation
+            .Select(c => c.ToDto()) // Utiliser le mapper de consultation
             .ToListAsync();
 
         return Ok(consultations);
@@ -156,7 +157,7 @@ public class PatientsController(VetoProDbContext context) : BaseApiController(co
         newPatient.Owner = owner; // 'owner' est maintenant un 'Contact' non-null
         newPatient.Breed = breed; // 'breed' inclut déjà 'Species'
         
-        var patientDto = MapToPatientDto(newPatient);
+        var patientDto = newPatient.ToDto();
 
         return CreatedAtAction(nameof(GetPatientById), new { id = patientDto.Id }, patientDto);
     }
@@ -263,71 +264,5 @@ public class PatientsController(VetoProDbContext context) : BaseApiController(co
         await _context.SaveChangesAsync();
 
         return NoContent();
-    }
-
-
-    /// <summary>
-    /// Méthode privée pour mapper une entité Patient vers un PatientDto.
-    /// S'attend à ce que p.Owner, p.Breed.Species, et p.Colors soient pré-chargés (Included).
-    /// </summary>
-    private static PatientDto MapToPatientDto(Patient p)
-    {
-        return new PatientDto
-        {
-            Id = p.Id,
-            Name = p.Name,
-            ChipNumber = p.ChipNumber,
-            DobEstimateStart = p.DobEstimateStart,
-            DobEstimateEnd = p.DobEstimateEnd,
-            Gender = p.Gender,
-            ReproductiveStatus = p.ReproductiveStatus,
-            DeceasedAt = p.DeceasedAt,
-            
-            // Mapper le Propriétaire
-            OwnerId = p.OwnerId,
-            OwnerFullName = $"{p.Owner.FirstName} {p.Owner.LastName}",
-            
-            // Mapper la Race
-            BreedId = p.BreedId,
-            BreedName = p.Breed.Name,
-            
-            // Mapper l'Espèce (via la Race)
-            SpeciesId = p.Breed.SpeciesId,
-            SpeciesName = p.Breed.Species.Name,
-
-            // Mapper les Couleurs
-            Colors = p.Colors.Select(c => new ColorDto
-            {
-                Id = c.Id,
-                Name = c.Name,
-                HexValue = c.HexValue
-            }).ToList()
-        };
-    }
-    
-    /// <summary>
-    /// Méthode privée pour mapper Consultation vers ConsultationDto.
-    /// S'attend à ce que c.Client, c.Patient, et c.Doctor soient pré-chargés.
-    /// </summary>
-    private static ConsultationDto MapToConsultationDto(Consultation c)
-    {
-        return new ConsultationDto
-        {
-            Id = c.Id,
-            AppointmentId = c.AppointmentId,
-            ConsultationDate = c.ConsultationDate,
-            ClientId = c.ClientId,
-            ClientName = $"{c.Client.FirstName} {c.Client.LastName}",
-            PatientId = c.PatientId,
-            PatientName = c.Patient.Name,
-            DoctorId = c.DoctorId,
-            DoctorName = $"{c.Doctor.FirstName} {c.Doctor.LastName}",
-            WeightKg = c.WeightKg,
-            TemperatureCelsius = c.TemperatureCelsius,
-            ClinicalExam = c.ClinicalExam,
-            Diagnosis = c.Diagnosis,
-            Treatment = c.Treatment,
-            Prescriptions = c.Prescriptions
-        };
     }
 }

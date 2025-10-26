@@ -24,7 +24,7 @@ public class ContactDto
     /// <summary>
     /// L'e-mail de contact (depuis le profil).
     /// </summary>
-    public string? ContactEmail { get; set; }
+    public string? Email { get; set; }
 
     public string? PhoneNumber { get; set; }
     public string? AddressLine1 { get; set; }
