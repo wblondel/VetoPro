@@ -42,7 +42,7 @@ public abstract class BaseApiController : ControllerBase
         }
 
         var userContact = await _context.Contacts
-            .Where(c => c.UserId.ToString() == currentUserIdString)
+            .Where(c => c.UserId.ToString() == currentUserIdString.ToUpper())
             .Select(c => c.Id)
             .FirstOrDefaultAsync();
 
