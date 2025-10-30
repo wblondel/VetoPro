@@ -1,5 +1,6 @@
 using VetoPro.Contracts.DTOs;
 using VetoPro.Api.Entities;
+using VetoPro.Contracts.DTOs.Clinical;
 
 namespace VetoPro.Api.Mapping;
 

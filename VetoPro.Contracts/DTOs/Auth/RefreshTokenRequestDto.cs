@@ -7,6 +7,5 @@ namespace VetoPro.Contracts.DTOs.Auth;
 /// </summary>
 public class RefreshTokenRequestDto
 {
-    [Required(ErrorMessage = "Le Refresh Token est obligatoire.")]
     public string RefreshToken { get; set; }
 }

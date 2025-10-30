@@ -10,6 +10,8 @@ using System.Text;
 using VetoPro.Api.Data;
 using VetoPro.Contracts.DTOs.Auth;
 using VetoPro.Api.Entities;
+using FluentValidation;
+using VetoPro.Contracts.Validators.Auth;
 
 namespace VetoPro.Api.Controllers;
 
@@ -22,16 +24,26 @@ public class AuthController : ControllerBase
     private readonly VetoProDbContext _context;
     private readonly IConfiguration _config;
 
+    private readonly IValidator<RegisterDto> _registerValidator;
+    private readonly IValidator<LoginDto> _loginValidator;
+    private readonly IValidator<RefreshTokenRequestDto> _refreshTokenValidator;
+    
     public AuthController(
         UserManager<ApplicationUser> userManager,
         RoleManager<IdentityRole<Guid>> roleManager,
         VetoProDbContext context,
-        IConfiguration config)
+        IConfiguration config,
+        IValidator<RegisterDto> registerValidator,
+        IValidator<LoginDto> loginValidator,
+        IValidator<RefreshTokenRequestDto> refreshTokenValidator)
     {
         _userManager = userManager;
         _roleManager = roleManager;
         _context = context;
         _config = config;
+        _registerValidator = registerValidator;
+        _loginValidator = loginValidator;
+        _refreshTokenValidator = refreshTokenValidator;
     }
 
     /// <summary>
@@ -42,6 +54,12 @@ public class AuthController : ControllerBase
     [HttpPost("register")]
     public async Task<ActionResult<AuthResponseDto>> Register([FromBody] RegisterDto registerDto)
     {
+        var validationResult = await _registerValidator.ValidateAsync(registerDto);
+        if (!validationResult.IsValid)
+        {
+            return ValidationProblem(new ValidationProblemDetails(validationResult.ToDictionary()));
+        }
+        
         // Vérifier si l'utilisateur existe déjà
         if (await _userManager.FindByEmailAsync(registerDto.Email) != null)
         {
@@ -111,21 +129,20 @@ public class AuthController : ControllerBase
     [HttpPost("login")]
     public async Task<ActionResult<AuthResponseDto>> Login([FromBody] LoginDto loginDto)
     {
-        // 1. Trouver l'utilisateur
-        var user = await _userManager.FindByEmailAsync(loginDto.Email);
-        if (user == null)
+        var validationResult = await _loginValidator.ValidateAsync(loginDto);
+        if (!validationResult.IsValid)
         {
-            return Unauthorized("Email ou mot de passe incorrect.");
+            return ValidationProblem(new ValidationProblemDetails(validationResult.ToDictionary()));
         }
-
-        // 2. Vérifier le mot de passe
-        var isPasswordCorrect = await _userManager.CheckPasswordAsync(user, loginDto.Password);
-        if (!isPasswordCorrect)
+        
+        // Trouver l'utilisateur
+        var user = await _userManager.FindByEmailAsync(loginDto.Email);
+        if (user == null || !await _userManager.CheckPasswordAsync(user, loginDto.Password))
         {
             return Unauthorized("Email ou mot de passe incorrect.");
         }
         
-        // 3. Trouver le profil Contact associé
+        // Trouver le profil Contact associé
         var contact = await _context.Contacts.FirstOrDefaultAsync(c => c.UserId == user.Id);
         if (contact == null)
         {
@@ -133,7 +150,7 @@ public class AuthController : ControllerBase
             return StatusCode(500, "Compte utilisateur trouvé mais profil de contact manquant.");
         }
 
-        // 4. Générer les tokens et la réponse
+        // Générer les tokens et la réponse
         var authResponse = await GenerateTokensAndResponse(user, contact);
         
         return Ok(authResponse);
@@ -147,7 +164,13 @@ public class AuthController : ControllerBase
     [HttpPost("refresh-token")]
     public async Task<ActionResult<AuthResponseDto>> RefreshToken([FromBody] RefreshTokenRequestDto requestDto)
     {
-        // 1. Trouver l'ancien refresh token dans la BDD
+        var validationResult = await _refreshTokenValidator.ValidateAsync(requestDto);
+        if (!validationResult.IsValid)
+        {
+            return ValidationProblem(new ValidationProblemDetails(validationResult.ToDictionary()));
+        }
+        
+        // Trouver l'ancien refresh token dans la BDD
         var oldRefreshToken = await _context.RefreshTokens
             .Include(rt => rt.User) // Charger l'utilisateur associé
             .FirstOrDefaultAsync(rt => rt.Token == requestDto.RefreshToken);
@@ -190,6 +213,12 @@ public class AuthController : ControllerBase
     [HttpPost("revoke-token")]
     public async Task<IActionResult> RevokeToken([FromBody] RefreshTokenRequestDto requestDto)
     {
+        var validationResult = await _refreshTokenValidator.ValidateAsync(requestDto);
+        if (!validationResult.IsValid)
+        {
+            return ValidationProblem(new ValidationProblemDetails(validationResult.ToDictionary()));
+        }
+        
         var refreshToken = await _context.RefreshTokens
             .FirstOrDefaultAsync(rt => rt.Token == requestDto.RefreshToken);
 

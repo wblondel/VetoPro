@@ -1,12 +1,20 @@
+using FluentValidation;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using VetoPro.Api.Data;
 using VetoPro.Api.Entities;
+using VetoPro.Contracts.Validators;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using VetoPro.Api.Middleware;
+using VetoPro.Contracts.Validators.Clinical;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Register Exception Handler Service
+builder.Services.AddExceptionHandler<ErrorHandlingMiddleware>();
+builder.Services.AddProblemDetails();
 
 // Add services to the container.
 builder.Services.AddControllers();
@@ -14,6 +22,9 @@ builder.Services.AddControllers();
 // Swagger/OpenAPI
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+// Fluent validation
+builder.Services.AddValidatorsFromAssemblyContaining<AppointmentCreateDtoValidator>();
 
 // Get the connection string from appsettings.json
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
@@ -91,8 +102,7 @@ builder.Services.AddCors(options =>
 // Construction de l'application
 var app = builder.Build();
 
-// Seed just after the app is built and before it starts
-await DataSeeder.SeedDatabaseAsync(app);
+app.UseExceptionHandler(); // This delegates unhandled exceptions to ErrorHandlingMiddleware
 
 // Utiliser Swagger uniquement en environnement de développement
 if (app.Environment.IsDevelopment())
@@ -112,6 +122,9 @@ app.MapControllers();
 
 // CORS pour les applications clientes
 app.UseCors();
+
+// Seed just after the app is built and before it starts
+await DataSeeder.SeedDatabaseAsync(app);
 
 // Lance l'application
 app.Run();

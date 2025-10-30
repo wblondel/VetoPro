@@ -2,6 +2,7 @@
 using System.Collections.ObjectModel;
 using System.Threading.Tasks;
 using VetoPro.Contracts.DTOs;
+using VetoPro.Contracts.DTOs.Catalogs;
 using VetoPro.Services;
 
 namespace VetoPro.ViewModels;
