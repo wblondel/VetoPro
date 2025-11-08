@@ -34,24 +34,20 @@ public class Program
 
         try
         {
-            Log.Information("Démarrage de l'API VetoPro...");
+            Log.Information("Starting VetoPro API...");
             
             var builder = WebApplication.CreateBuilder(args);
             builder.Host.UseSerilog();
 
             var webAppCORS = "WebAppCORS";
             
-            // Register Exception Handler Service
-            builder.Services.AddExceptionHandler<ErrorHandlingMiddleware>();
-            builder.Services.AddProblemDetails();
-
-            // Make URLs lowercase
-            builder.Services.AddRouting(options => options.LowercaseUrls = true);
-
-            // Add services to the container.
+            // --- Adding Services ---
+            Log.Information("Configuring services...");
+            
+            builder.Services.AddExceptionHandler<ErrorHandlingMiddleware>(); // Register Exception Handler Service
+            builder.Services.AddProblemDetails(); 
             builder.Services.AddControllers();
-
-            // Swagger/OpenAPI
+            builder.Services.AddValidatorsFromAssemblyContaining<AppointmentCreateDtoValidator>(); // Fluent validation
             builder.Services.AddEndpointsApiExplorer();
             builder.Services.AddSwaggerGen(options =>
             {
@@ -93,16 +89,11 @@ public class Program
                     }
                 });
             });
-
-            // Fluent validation
-            builder.Services.AddValidatorsFromAssemblyContaining<AppointmentCreateDtoValidator>();
-
-            // Get the connection string from appsettings.json
-            var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-
+            
             // Configuration Entity Framework
+            var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
             builder.Services.AddDbContext<VetoProDbContext>(options => options.UseSqlite(connectionString));
-
+            
             // Registering ASP.NET Identity
             builder.Services.AddIdentity<ApplicationUser, IdentityRole<Guid>>(options =>
                 {
@@ -115,7 +106,7 @@ public class Program
                 })
                 .AddEntityFrameworkStores<VetoProDbContext>()
                 .AddDefaultTokenProviders();
-
+            
             // Configuration JWT
             var jwtKey = builder.Configuration["Jwt:Key"];
             var jwtIssuer = builder.Configuration["Jwt:Issuer"];
@@ -154,11 +145,8 @@ public class Program
                 });
 
             builder.Services.AddAuthorization();
-
-            // AutoMapper
-            //builder.Services.AddAutoMapper(typeof(Program));
-
-            // CORS pour les applications clientes
+            
+            // CORS
             builder.Services.AddCors(options =>
             {
                 options.AddPolicy(name: webAppCORS,
@@ -173,7 +161,7 @@ public class Program
 
                         if (builder.Environment.IsDevelopment())
                         {
-                            policy.WithOrigins("http://localhost:5256", "https://localhost:7123")
+                            policy.WithOrigins("http://localhost:5256", "https://localhost:7008")
                                 .AllowAnyMethod()
                                 .AllowAnyHeader()
                                 .WithExposedHeaders("X-Pagination");
@@ -181,34 +169,44 @@ public class Program
                     });
             });
 
-            // Construction de l'application
+            // AutoMapper
+            //builder.Services.AddAutoMapper(typeof(Program));
+            
+            builder.Services.AddRouting(options => options.LowercaseUrls = true); // Make URLs lowercase
+            
+            Log.Information("Services configuration finished.");
+            
+            // --- Building the application ---
+            Log.Information("Building the application (builder.Build())...");
             var app = builder.Build();
-
+            
+            // --- Configuring the Middleware Pipeline ---
+            Log.Information("Configuring the middleware pipeline...");
+            
             app.UseExceptionHandler(); // This delegates unhandled exceptions to ErrorHandlingMiddleware
-
-            // Utiliser Swagger uniquement en environnement de développement
+            
             if (app.Environment.IsDevelopment())
             {
                 app.UseSwagger();
                 app.UseSwaggerUI();
+                Log.Information("Swagger UI and documentation enabled (Development mode).");
             }
-
+            
             app.UseHttpsRedirection();
-
-            // IMPORTANT : L'authentification DOIT être avant l'autorisation
-            app.UseAuthentication();
+            app.UseAuthentication(); // authentification MUST BE BEFORE authorization
             app.UseAuthorization();
-
-            // Map les routes vers les contrôleurs
-            app.MapControllers();
-
-            // CORS pour les applications clientes
             app.UseCors(webAppCORS);
-
-            // Seed just after the app is built and before it starts
+            app.MapControllers(); // map routes to controllers
+            
+            Log.Information("Middleware pipeline configured.");
+            
+            // --- Seeding the database ---
+            Log.Information("Starting database seeding...");
             await app.SeedDatabaseAsync();
-
-            // Lance l'application
+            Log.Information("Database seeding finished.");
+            
+            // --- Starting the application ---
+            Log.Information("Starting application...");
             await app.RunAsync();
         }
         catch (Exception ex)
