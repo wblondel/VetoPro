@@ -161,7 +161,7 @@ public class Program
 
                         if (builder.Environment.IsDevelopment())
                         {
-                            policy.WithOrigins("http://localhost:5256", "https://localhost:7008")
+                            policy.WithOrigins("http://localhost:5235", "https://localhost:7169")
                                 .AllowAnyMethod()
                                 .AllowAnyHeader()
                                 .WithExposedHeaders("X-Pagination");
