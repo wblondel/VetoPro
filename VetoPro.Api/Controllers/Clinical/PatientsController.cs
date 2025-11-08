@@ -12,20 +12,12 @@ using VetoPro.Contracts.DTOs.Clinical;
 namespace VetoPro.Api.Controllers.Clinical;
 
 [Authorize]
-public class PatientsController : BaseApiController
+public class PatientsController(
+    VetoProDbContext context,
+    IValidator<PatientCreateDto> patientCreateValidator,
+    IValidator<PatientUpdateDto> patientUpdateValidator)
+    : BaseApiController(context)
 {
-    private readonly IValidator<PatientCreateDto> _patientCreateValidator;
-    private readonly IValidator<PatientUpdateDto> _patientUpdateValidator;
-    
-    public PatientsController(
-        VetoProDbContext context,
-        IValidator<PatientCreateDto> patientCreateValidator,
-        IValidator<PatientUpdateDto> patientUpdateValidator) : base(context)
-    {
-        _patientCreateValidator = patientCreateValidator;
-        _patientUpdateValidator = patientUpdateValidator;
-    }
-
     /// <summary>
     /// GET: api/patients
     /// Récupère la liste de tous les patients avec leurs détails.
@@ -34,7 +26,7 @@ public class PatientsController : BaseApiController
     [Authorize(Roles = "Admin, Doctor")]
     public async Task<ActionResult<IEnumerable<PatientDto>>> GetAllPatients([FromQuery] PaginationParams paginationParams)
     {
-        var query = _context.Patients
+        var query = Context.Patients
             .Include(p => p.Owner) // Jointure avec Contacts (Propriétaire)
             .Include(p => p.Breed)
                 .ThenInclude(b => b.Species) // Jointure imbriquée avec Species
@@ -52,7 +44,7 @@ public class PatientsController : BaseApiController
     [HttpGet("{id}")]
     public async Task<ActionResult<PatientDto>> GetPatientById(Guid id)
     {
-        var patient = await _context.Patients
+        var patient = await Context.Patients
             .Include(p => p.Owner)
             .Include(p => p.Breed)
                 .ThenInclude(b => b.Species)
@@ -89,7 +81,7 @@ public class PatientsController : BaseApiController
     [HttpGet("{id}/consultations")]
     public async Task<ActionResult<IEnumerable<ConsultationDto>>> GetConsultationsForPatient(Guid id)
     {
-        var patient = await _context.Patients.FindAsync(id);
+        var patient = await Context.Patients.FindAsync(id);
         if (patient == null)
         {
             return NotFound("Patient non trouvé.");
@@ -106,7 +98,7 @@ public class PatientsController : BaseApiController
             }
         }
 
-        var consultations = await _context.Consultations
+        var consultations = await Context.Consultations
             .Include(c => c.Client)
             .Include(c => c.Patient)
             .Include(c => c.Doctor)
@@ -126,27 +118,27 @@ public class PatientsController : BaseApiController
     [Authorize(Roles = "Admin, Doctor")]
     public async Task<ActionResult<PatientDto>> CreatePatient([FromBody] PatientCreateDto createDto)
     {
-        var validationResult = await _patientCreateValidator.ValidateAsync(createDto);
+        var validationResult = await patientCreateValidator.ValidateAsync(createDto);
         if (!validationResult.IsValid)
         {
             return ValidationProblem(new ValidationProblemDetails(validationResult.ToDictionary()));
         }
         
         // 1. Valider les clés étrangères (et récupérer les entités)
-        var owner = await _context.Contacts.FindAsync(createDto.OwnerId);
+        var owner = await Context.Contacts.FindAsync(createDto.OwnerId);
         if (owner == null)
         {
             return BadRequest("L'ID du propriétaire (OwnerId) n'existe pas.");
         }
         
-        var breed = await _context.Breeds.Include(b => b.Species).FirstOrDefaultAsync(b => b.Id == createDto.BreedId);
+        var breed = await Context.Breeds.Include(b => b.Species).FirstOrDefaultAsync(b => b.Id == createDto.BreedId);
         if (breed == null)
         {
             return BadRequest("L'ID de la race (BreedId) n'existe pas.");
         }
 
         // 2. Valider et récupérer les entités Couleurs (M2M)
-        var colors = await _context.Colors
+        var colors = await Context.Colors
             .Where(c => createDto.ColorIds.Contains(c.Id))
             .ToListAsync();
         
@@ -169,8 +161,8 @@ public class PatientsController : BaseApiController
             Colors = colors // Assigner la liste d'entités Couleur
         };
 
-        _context.Patients.Add(newPatient);
-        await _context.SaveChangesAsync();
+        Context.Patients.Add(newPatient);
+        await Context.SaveChangesAsync();
 
         // 4. Mapper au DTO de retour
         newPatient.Owner = owner; // 'owner' est maintenant un 'Contact' non-null
@@ -189,14 +181,14 @@ public class PatientsController : BaseApiController
     [Authorize(Roles = "Admin, Doctor")]
     public async Task<IActionResult> UpdatePatient(Guid id, [FromBody] PatientUpdateDto updateDto)
     {
-        var validationResult = await _patientUpdateValidator.ValidateAsync(updateDto);
+        var validationResult = await patientUpdateValidator.ValidateAsync(updateDto);
         if (!validationResult.IsValid)
         {
             return ValidationProblem(new ValidationProblemDetails(validationResult.ToDictionary()));
         }
         
         // 1. Trouver le patient et ses couleurs actuelles
-        var patientToUpdate = await _context.Patients
+        var patientToUpdate = await Context.Patients
             .Include(p => p.Colors)
             .FirstOrDefaultAsync(p => p.Id == id);
 
@@ -206,11 +198,11 @@ public class PatientsController : BaseApiController
         }
 
         // 2. Valider les clés étrangères
-        if (updateDto.OwnerId != patientToUpdate.OwnerId && !await _context.Contacts.AnyAsync(c => c.Id == updateDto.OwnerId))
+        if (updateDto.OwnerId != patientToUpdate.OwnerId && !await Context.Contacts.AnyAsync(c => c.Id == updateDto.OwnerId))
         {
             return BadRequest("Le nouvel ID du propriétaire (OwnerId) n'existe pas.");
         }
-        if (updateDto.BreedId != patientToUpdate.BreedId && !await _context.Breeds.AnyAsync(b => b.Id == updateDto.BreedId))
+        if (updateDto.BreedId != patientToUpdate.BreedId && !await Context.Breeds.AnyAsync(b => b.Id == updateDto.BreedId))
         {
             return BadRequest("Le nouvel ID de la race (BreedId) n'existe pas.");
         }
@@ -229,7 +221,7 @@ public class PatientsController : BaseApiController
         // 4. Gérer la mise à jour de la relation M2M (Couleurs)
         // Supprimer les anciennes, ajouter les nouvelles
         patientToUpdate.Colors.Clear();
-        var newColors = await _context.Colors
+        var newColors = await Context.Colors
             .Where(c => updateDto.ColorIds.Contains(c.Id))
             .ToListAsync();
         
@@ -245,11 +237,11 @@ public class PatientsController : BaseApiController
 
         try
         {
-            await _context.SaveChangesAsync();
+            await Context.SaveChangesAsync();
         }
         catch (DbUpdateConcurrencyException)
         {
-            if (!_context.Patients.Any(p => p.Id == id))
+            if (!Context.Patients.Any(p => p.Id == id))
                 return NotFound();
             else
                 throw;
@@ -266,7 +258,7 @@ public class PatientsController : BaseApiController
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeletePatient(Guid id)
     {
-        var patientToDelete = await _context.Patients
+        var patientToDelete = await Context.Patients
             .Include(p => p.Appointments)
             .Include(p => p.Consultations)
             .FirstOrDefaultAsync(p => p.Id == id);
@@ -285,8 +277,8 @@ public class PatientsController : BaseApiController
         // Note : La suppression de la table de liaison M2M (patient_colors)
         // est gérée automatiquement par EF Core.
 
-        _context.Patients.Remove(patientToDelete);
-        await _context.SaveChangesAsync();
+        Context.Patients.Remove(patientToDelete);
+        await Context.SaveChangesAsync();
 
         return NoContent();
     }

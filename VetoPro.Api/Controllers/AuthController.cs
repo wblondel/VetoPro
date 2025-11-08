@@ -17,34 +17,17 @@ namespace VetoPro.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class AuthController : ControllerBase
+public class AuthController(
+    UserManager<ApplicationUser> userManager,
+    RoleManager<IdentityRole<Guid>> roleManager,
+    VetoProDbContext context,
+    IConfiguration config,
+    IValidator<RegisterDto> registerValidator,
+    IValidator<LoginDto> loginValidator,
+    IValidator<RefreshTokenRequestDto> refreshTokenValidator)
+    : ControllerBase
 {
-    private readonly UserManager<ApplicationUser> _userManager;
-    private readonly RoleManager<IdentityRole<Guid>> _roleManager;
-    private readonly VetoProDbContext _context;
-    private readonly IConfiguration _config;
-
-    private readonly IValidator<RegisterDto> _registerValidator;
-    private readonly IValidator<LoginDto> _loginValidator;
-    private readonly IValidator<RefreshTokenRequestDto> _refreshTokenValidator;
-    
-    public AuthController(
-        UserManager<ApplicationUser> userManager,
-        RoleManager<IdentityRole<Guid>> roleManager,
-        VetoProDbContext context,
-        IConfiguration config,
-        IValidator<RegisterDto> registerValidator,
-        IValidator<LoginDto> loginValidator,
-        IValidator<RefreshTokenRequestDto> refreshTokenValidator)
-    {
-        _userManager = userManager;
-        _roleManager = roleManager;
-        _context = context;
-        _config = config;
-        _registerValidator = registerValidator;
-        _loginValidator = loginValidator;
-        _refreshTokenValidator = refreshTokenValidator;
-    }
+    private readonly RoleManager<IdentityRole<Guid>> _roleManager = roleManager;
 
     /// <summary>
     /// POST: api/auth/register
@@ -54,20 +37,20 @@ public class AuthController : ControllerBase
     [HttpPost("register")]
     public async Task<ActionResult<AuthResponseDto>> Register([FromBody] RegisterDto registerDto)
     {
-        var validationResult = await _registerValidator.ValidateAsync(registerDto);
+        var validationResult = await registerValidator.ValidateAsync(registerDto);
         if (!validationResult.IsValid)
         {
             return ValidationProblem(new ValidationProblemDetails(validationResult.ToDictionary()));
         }
         
         // Vérifier si l'utilisateur existe déjà
-        if (await _userManager.FindByEmailAsync(registerDto.Email) != null)
+        if (await userManager.FindByEmailAsync(registerDto.Email) != null)
         {
             return Conflict("Un compte avec cet e-mail existe déjà.");
         }
 
         // Commencer une transaction : L'utilisateur ET le contact doivent être créés
-        await using var transaction = await _context.Database.BeginTransactionAsync();
+        await using var transaction = await context.Database.BeginTransactionAsync();
 
         try
         {
@@ -79,7 +62,7 @@ public class AuthController : ControllerBase
                 EmailConfirmed = true // Confirmer auto pour le dev
             };
 
-            var identityResult = await _userManager.CreateAsync(newUser, registerDto.Password);
+            var identityResult = await userManager.CreateAsync(newUser, registerDto.Password);
 
             if (!identityResult.Succeeded)
             {
@@ -88,7 +71,7 @@ public class AuthController : ControllerBase
             }
 
             // 2. Assigner le rôle "Client"
-            await _userManager.AddToRoleAsync(newUser, "Client");
+            await userManager.AddToRoleAsync(newUser, "Client");
 
             // 3. Créer le Contact (Profil)
             var newContact = new Contact
@@ -103,8 +86,8 @@ public class AuthController : ControllerBase
                 UserId = newUser.Id // Lier le compte de connexion
             };
 
-            _context.Contacts.Add(newContact);
-            await _context.SaveChangesAsync(); // Sauvegarder le contact
+            context.Contacts.Add(newContact);
+            await context.SaveChangesAsync(); // Sauvegarder le contact
 
             // 4. Valider la transaction
             await transaction.CommitAsync();
@@ -129,21 +112,21 @@ public class AuthController : ControllerBase
     [HttpPost("login")]
     public async Task<ActionResult<AuthResponseDto>> Login([FromBody] LoginDto loginDto)
     {
-        var validationResult = await _loginValidator.ValidateAsync(loginDto);
+        var validationResult = await loginValidator.ValidateAsync(loginDto);
         if (!validationResult.IsValid)
         {
             return ValidationProblem(new ValidationProblemDetails(validationResult.ToDictionary()));
         }
         
         // Trouver l'utilisateur
-        var user = await _userManager.FindByEmailAsync(loginDto.Email);
-        if (user == null || !await _userManager.CheckPasswordAsync(user, loginDto.Password))
+        var user = await userManager.FindByEmailAsync(loginDto.Email);
+        if (user == null || !await userManager.CheckPasswordAsync(user, loginDto.Password))
         {
             return Unauthorized("Email ou mot de passe incorrect.");
         }
         
         // Trouver le profil Contact associé
-        var contact = await _context.Contacts.FirstOrDefaultAsync(c => c.UserId == user.Id);
+        var contact = await context.Contacts.FirstOrDefaultAsync(c => c.UserId == user.Id);
         if (contact == null)
         {
             // Cas rare où un utilisateur existe sans profil contact
@@ -164,14 +147,14 @@ public class AuthController : ControllerBase
     [HttpPost("refresh-token")]
     public async Task<ActionResult<AuthResponseDto>> RefreshToken([FromBody] RefreshTokenRequestDto requestDto)
     {
-        var validationResult = await _refreshTokenValidator.ValidateAsync(requestDto);
+        var validationResult = await refreshTokenValidator.ValidateAsync(requestDto);
         if (!validationResult.IsValid)
         {
             return ValidationProblem(new ValidationProblemDetails(validationResult.ToDictionary()));
         }
         
         // Trouver l'ancien refresh token dans la BDD
-        var oldRefreshToken = await _context.RefreshTokens
+        var oldRefreshToken = await context.RefreshTokens
             .Include(rt => rt.User) // Charger l'utilisateur associé
             .FirstOrDefaultAsync(rt => rt.Token == requestDto.RefreshToken);
 
@@ -192,7 +175,7 @@ public class AuthController : ControllerBase
 
         // 3. L'ancien token est valide. Récupérer l'utilisateur.
         var user = oldRefreshToken.User;
-        var contact = await _context.Contacts.FirstOrDefaultAsync(c => c.UserId == user.Id);
+        var contact = await context.Contacts.FirstOrDefaultAsync(c => c.UserId == user.Id);
         
         if (contact == null)
         {
@@ -213,13 +196,13 @@ public class AuthController : ControllerBase
     [HttpPost("revoke-token")]
     public async Task<IActionResult> RevokeToken([FromBody] RefreshTokenRequestDto requestDto)
     {
-        var validationResult = await _refreshTokenValidator.ValidateAsync(requestDto);
+        var validationResult = await refreshTokenValidator.ValidateAsync(requestDto);
         if (!validationResult.IsValid)
         {
             return ValidationProblem(new ValidationProblemDetails(validationResult.ToDictionary()));
         }
         
-        var refreshToken = await _context.RefreshTokens
+        var refreshToken = await context.RefreshTokens
             .FirstOrDefaultAsync(rt => rt.Token == requestDto.RefreshToken);
 
         if (refreshToken == null)
@@ -228,7 +211,7 @@ public class AuthController : ControllerBase
         }
 
         refreshToken.IsRevoked = true;
-        await _context.SaveChangesAsync();
+        await context.SaveChangesAsync();
 
         return NoContent(); // 204 No Content (Déconnexion réussie)
     }
@@ -243,12 +226,12 @@ public class AuthController : ControllerBase
     private async Task<AuthResponseDto> GenerateTokensAndResponse(ApplicationUser user, Contact contact, RefreshToken? oldRefreshToken = null)
     {
         // 1. Générer l'Access Token (JWT)
-        var roles = await _userManager.GetRolesAsync(user);
+        var roles = await userManager.GetRolesAsync(user);
         var accessToken = GenerateAccessToken(user, roles);
 
         // 2. Générer le Refresh Token
         var newRefreshToken = GenerateRefreshToken(user.Id);
-        await _context.RefreshTokens.AddAsync(newRefreshToken);
+        await context.RefreshTokens.AddAsync(newRefreshToken);
 
         // 3. Révoquer l'ancien token (Rotation)
         if (oldRefreshToken != null)
@@ -257,7 +240,7 @@ public class AuthController : ControllerBase
         }
 
         // 4. Sauvegarder les changements (nouveau token + révocation de l'ancien)
-        await _context.SaveChangesAsync();
+        await context.SaveChangesAsync();
 
         // 5. Créer la réponse
         return new AuthResponseDto
@@ -277,7 +260,7 @@ public class AuthController : ControllerBase
     /// </summary>
     private string GenerateAccessToken(ApplicationUser user, IList<string> roles)
     {
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]!));
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(config["Jwt:Key"]!));
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
         var claims = new List<Claim>
@@ -296,9 +279,9 @@ public class AuthController : ControllerBase
         var tokenDescriptor = new SecurityTokenDescriptor
         {
             Subject = new ClaimsIdentity(claims),
-            Issuer = _config["Jwt:Issuer"],
-            Audience = _config["Jwt:Audience"],
-            Expires = DateTime.UtcNow.AddMinutes(Convert.ToDouble(_config["Jwt:AccessTokenDurationInMinutes"])),
+            Issuer = config["Jwt:Issuer"],
+            Audience = config["Jwt:Audience"],
+            Expires = DateTime.UtcNow.AddMinutes(Convert.ToDouble(config["Jwt:AccessTokenDurationInMinutes"])),
             SigningCredentials = credentials
         };
 
@@ -323,7 +306,7 @@ public class AuthController : ControllerBase
             Id = Guid.NewGuid(),
             Token = tokenString,
             UserId = userId,
-            ExpiresUtc = DateTime.UtcNow.AddDays(Convert.ToDouble(_config["Jwt:RefreshTokenDurationInDays"])),
+            ExpiresUtc = DateTime.UtcNow.AddDays(Convert.ToDouble(config["Jwt:RefreshTokenDurationInDays"])),
         };
     }
 }

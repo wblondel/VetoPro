@@ -2,13 +2,15 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using VetoPro.Api.Data;
+using VetoPro.Api.Mapping;
 using VetoPro.Contracts.DTOs;
 using VetoPro.Contracts.DTOs.Catalogs;
 
 namespace VetoPro.Api.Controllers.Catalogs;
 
 /// <summary>
-/// API Controller pour la gestion des Espèces (Species).
+/// API pour la gestion du catalogue des espèces animales.
+/// Permet de lire les espèces et les races associées.
 /// </summary>
 [Authorize]
 public class SpeciesController(VetoProDbContext context) : BaseApiController(context)
@@ -16,57 +18,44 @@ public class SpeciesController(VetoProDbContext context) : BaseApiController(con
     /// <summary>
     /// Récupère la liste de toutes les espèces.
     /// </summary>
+    /// <returns>Une liste complète d'espèces.</returns>
     [HttpGet] // Répond à la requête : GET /api/species
     [AllowAnonymous]
     public async Task<ActionResult<IEnumerable<SpeciesDto>>> GetSpecies()
     {
-        try
-        {
-            var speciesList = await _context.Species
-                .OrderBy(s => s.Name) // Toujours bon de trier
-                .Select(s => new SpeciesDto // Conversion de l'Entité en DTO
-                {
-                    Id = s.Id,
-                    Name = s.Name
-                })
-                .ToListAsync();
-
-            // Renvoie une réponse 200 OK avec la liste en JSON
-            return Ok(speciesList);
-        }
-        catch (Exception ex)
-        {
-            // En cas d'erreur de base de données
-            return StatusCode(500, "Erreur interne du serveur: " + ex.Message);
-        }
+        var speciesList = await Context.Species
+            .OrderBy(s => s.Name)
+            .Select(s => s.ToDto())
+            .ToListAsync();
+        
+        return Ok(speciesList);
     }
     
     /// <summary>
-    /// GET: api/species/{id}/breeds
     /// Récupère la liste de toutes les races pour une espèce donnée.
     /// </summary>
-    [HttpGet("{id}/breeds")]
+    /// <param name="id">L'ID (UUID) de l'espèce.</param>
+    /// <returns>Une liste de races.</returns>
+    [HttpGet("{id:guid}/breeds")]
     [AllowAnonymous]
     public async Task<ActionResult<IEnumerable<BreedDto>>> GetBreedsForSpecies(Guid id)
     {
         // 1. Vérifier si l'espèce parente existe
-        var species = await _context.Species.FindAsync(id);
-        if (species == null)
+        var speciesName = await Context.Species
+            .Where(s => s.Id == id)
+            .Select(s => s.Name)
+            .FirstOrDefaultAsync();
+        
+        if (speciesName == null)
         {
             return NotFound("L'espèce avec cet ID n'a pas été trouvée.");
         }
 
         // 2. Récupérer les races liées
-        var breeds = await _context.Breeds
+        var breeds = await Context.Breeds
             .Where(b => b.SpeciesId == id) // Filtrer par SpeciesId
             .OrderBy(b => b.Name)
-            .Select(b => new BreedDto
-            {
-                Id = b.Id,
-                Name = b.Name,
-                SpeciesId = b.SpeciesId,
-                SpeciesName = species.Name // On utilise le nom de l'espèce déjà trouvée
-            })
+            .Select(b => b.ToDto(speciesName))
             .ToListAsync();
 
         return Ok(breeds);

@@ -12,20 +12,12 @@ using FluentValidation;
 namespace VetoPro.Api.Controllers.Catalogs;
 
 [Authorize]
-public class ServicesController : BaseApiController
+public class ServicesController(
+    VetoProDbContext context,
+    IValidator<ServiceCreateDto> serviceCreateValidator,
+    IValidator<ServiceUpdateDto> serviceUpdateValidator)
+    : BaseApiController(context)
 {
-    private readonly IValidator<ServiceCreateDto> _serviceCreateValidator;
-    private readonly IValidator<ServiceUpdateDto> _serviceUpdateValidator;
-    
-    public ServicesController(
-        VetoProDbContext context,
-        IValidator<ServiceCreateDto> serviceCreateValidator,
-        IValidator<ServiceUpdateDto> serviceUpdateValidator) : base(context)
-    {
-        _serviceCreateValidator = serviceCreateValidator;
-        _serviceUpdateValidator = serviceUpdateValidator;
-    }
-
     /// <summary>
     /// GET: api/services
     /// Récupère la liste de tous les services (actes).
@@ -35,7 +27,7 @@ public class ServicesController : BaseApiController
     [AllowAnonymous]
     public async Task<ActionResult<IEnumerable<ServiceDto>>> GetAllServices([FromQuery] PaginationParams paginationParams)
     {
-        var query = _context.Services
+        var query = Context.Services
             .OrderBy(s => s.Name)
             .AsQueryable();
         
@@ -50,7 +42,7 @@ public class ServicesController : BaseApiController
     [AllowAnonymous]
     public async Task<ActionResult<ServiceDto>> GetServiceById(Guid id)
     {
-        var service = await _context.Services
+        var service = await Context.Services
             .Where(s => s.Id == id)
             .Select(s => s.ToDto())
             .FirstOrDefaultAsync();
@@ -71,14 +63,14 @@ public class ServicesController : BaseApiController
     [Authorize(Roles = "Admin, Doctor")]
     public async Task<ActionResult<ServiceDto>> CreateService([FromBody] ServiceCreateDto createDto)
     {
-        var validationResult = await _serviceCreateValidator.ValidateAsync(createDto);
+        var validationResult = await serviceCreateValidator.ValidateAsync(createDto);
         if (!validationResult.IsValid)
         {
             return ValidationProblem(new ValidationProblemDetails(validationResult.ToDictionary()));
         }
         
         // Vérifier si le nom existe déjà (contrainte unique)
-        if (await _context.Services.AnyAsync(s => s.Name == createDto.Name))
+        if (await Context.Services.AnyAsync(s => s.Name == createDto.Name))
         {
             return Conflict("Un service avec ce nom existe déjà.");
         }
@@ -92,8 +84,8 @@ public class ServicesController : BaseApiController
             RequiresPatient = createDto.RequiresPatient
         };
 
-        _context.Services.Add(newService);
-        await _context.SaveChangesAsync();
+        Context.Services.Add(newService);
+        await Context.SaveChangesAsync();
 
         // Mapper l'entité créée vers le DTO de retour
         var serviceDto = newService.ToDto();
@@ -109,13 +101,13 @@ public class ServicesController : BaseApiController
     [Authorize(Roles = "Admin, Doctor")]
     public async Task<IActionResult> UpdateService(Guid id, [FromBody] ServiceUpdateDto updateDto)
     {
-        var validationResult = await _serviceUpdateValidator.ValidateAsync(updateDto);
+        var validationResult = await serviceUpdateValidator.ValidateAsync(updateDto);
         if (!validationResult.IsValid)
         {
             return ValidationProblem(new ValidationProblemDetails(validationResult.ToDictionary()));
         }
         
-        var serviceToUpdate = await _context.Services.FindAsync(id);
+        var serviceToUpdate = await Context.Services.FindAsync(id);
 
         if (serviceToUpdate == null)
         {
@@ -123,7 +115,7 @@ public class ServicesController : BaseApiController
         }
 
         // Vérifier si le nouveau nom est déjà pris par un *autre* service
-        if (await _context.Services.AnyAsync(s => s.Name == updateDto.Name && s.Id != id))
+        if (await Context.Services.AnyAsync(s => s.Name == updateDto.Name && s.Id != id))
         {
             return Conflict("Un autre service avec ce nom existe déjà.");
         }
@@ -134,7 +126,7 @@ public class ServicesController : BaseApiController
         serviceToUpdate.IsActive = updateDto.IsActive;
         serviceToUpdate.RequiresPatient = updateDto.RequiresPatient;
 
-        await _context.SaveChangesAsync();
+        await Context.SaveChangesAsync();
 
         return NoContent(); // 204 No Content
     }
@@ -147,7 +139,7 @@ public class ServicesController : BaseApiController
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeleteService(Guid id)
     {
-        var serviceToDelete = await _context.Services.FindAsync(id);
+        var serviceToDelete = await Context.Services.FindAsync(id);
 
         if (serviceToDelete == null)
         {
@@ -155,21 +147,21 @@ public class ServicesController : BaseApiController
         }
 
         // Sécurité : Vérifier si le service est utilisé dans une PriceList
-        var isUsedInPriceList = await _context.PriceList.AnyAsync(pl => pl.ServiceId == id);
+        var isUsedInPriceList = await Context.PriceList.AnyAsync(pl => pl.ServiceId == id);
         if (isUsedInPriceList)
         {
             return BadRequest("Ce service ne peut pas être supprimé car il est utilisé dans la liste de prix (PriceList).");
         }
 
         // Sécurité : Vérifier si le service est utilisé dans une InvoiceLine
-        var isUsedInInvoice = await _context.InvoiceLines.AnyAsync(il => il.ServiceId == id);
+        var isUsedInInvoice = await Context.InvoiceLines.AnyAsync(il => il.ServiceId == id);
         if (isUsedInInvoice)
         {
             return BadRequest("Ce service ne peut pas être supprimé car il est lié à une ou plusieurs factures.");
         }
 
-        _context.Services.Remove(serviceToDelete);
-        await _context.SaveChangesAsync();
+        Context.Services.Remove(serviceToDelete);
+        await Context.SaveChangesAsync();
 
         return NoContent();
     }

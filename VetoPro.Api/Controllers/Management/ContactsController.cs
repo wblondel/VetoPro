@@ -30,7 +30,7 @@ public class ContactsController(
     [Authorize(Roles = "Admin, Doctor")]
     public async Task<ActionResult<IEnumerable<ContactDto>>> GetAllContacts([FromQuery] PaginationParams paginationParams)
     {
-        var query = _context.Contacts
+        var query = Context.Contacts
             .Include(c => c.User) // Inclure le compte de connexion
             .Include(c => c.StaffDetails) // Inclure les détails du staff
             .OrderBy(c => c.LastName).ThenBy(c => c.FirstName)
@@ -46,7 +46,7 @@ public class ContactsController(
     [HttpGet("{id}")]
     public async Task<ActionResult<ContactDto>> GetContactById(Guid id)
     {
-        var contact = await _context.Contacts
+        var contact = await Context.Contacts
             .Include(c => c.User)
             .Include(c => c.StaffDetails)
             .FirstOrDefaultAsync(c => c.Id == id);
@@ -87,7 +87,7 @@ public class ContactsController(
         }
         
         // Commencer une transaction : si une partie échoue, tout est annulé
-        await using var transaction = await _context.Database.BeginTransactionAsync();
+        await using var transaction = await Context.Database.BeginTransactionAsync();
 
         try
         {
@@ -145,9 +145,9 @@ public class ContactsController(
                 UserId = newUser?.Id // Lier le compte de connexion s'il a été créé
             };
             
-            _context.Contacts.Add(newContact);
+            Context.Contacts.Add(newContact);
             // Il faut sauvegarder ici pour que newContact.Id soit généré
-            await _context.SaveChangesAsync();
+            await Context.SaveChangesAsync();
 
             // 3. Gérer les Détails du Staff (si 'IsStaff' est vrai)
             if (createDto.IsStaff && createDto.StaffDetails != null)
@@ -160,10 +160,10 @@ public class ContactsController(
                     Specialty = createDto.StaffDetails.Specialty,
                     IsActive = createDto.StaffDetails.IsActive
                 };
-                _context.StaffDetails.Add(newStaffDetails);
+                Context.StaffDetails.Add(newStaffDetails);
                 
                 // Sauvegarder les détails du staff
-                await _context.SaveChangesAsync();
+                await Context.SaveChangesAsync();
                 
                 // Remplir la propriété de navigation pour le DTO de retour
                 newContact.StaffDetails = newStaffDetails; 
@@ -216,7 +216,7 @@ public class ContactsController(
             return Forbid("Vous n'avez pas l'autorisation de vous assigner un rôle de staff.");
         }
         
-        var contactToUpdate = await _context.Contacts
+        var contactToUpdate = await Context.Contacts
             .Include(c => c.StaffDetails) // Charger les détails staff existants
             .FirstOrDefaultAsync(c => c.Id == id);
 
@@ -254,7 +254,7 @@ public class ContactsController(
                     Specialty = staffDto.Specialty,
                     IsActive = staffDto.IsActive
                 };
-                _context.StaffDetails.Add(newStaffDetails);
+                Context.StaffDetails.Add(newStaffDetails);
             }
             else
             {
@@ -268,16 +268,16 @@ public class ContactsController(
         else if (contactToUpdate.StaffDetails != null)
         {
             // Cas 3: N'est plus Staff -> Supprimer les détails
-            _context.StaffDetails.Remove(contactToUpdate.StaffDetails);
+            Context.StaffDetails.Remove(contactToUpdate.StaffDetails);
         }
 
         try
         {
-            await _context.SaveChangesAsync();
+            await Context.SaveChangesAsync();
         }
         catch (DbUpdateConcurrencyException)
         {
-            if (!_context.Contacts.Any(c => c.Id == id))
+            if (!Context.Contacts.Any(c => c.Id == id))
                 return NotFound();
             else
                 throw;
@@ -294,7 +294,7 @@ public class ContactsController(
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeleteContact(Guid id)
     {
-        var contactToDelete = await _context.Contacts
+        var contactToDelete = await Context.Contacts
             .Include(c => c.PatientsOwned)
             .Include(c => c.Invoices)
             .Include(c => c.StaffDetails)
@@ -315,20 +315,20 @@ public class ContactsController(
             return BadRequest("Ce contact ne peut pas être supprimé car il est lié à une ou plusieurs factures.");
         }
         
-        await using var transaction = await _context.Database.BeginTransactionAsync();
+        await using var transaction = await Context.Database.BeginTransactionAsync();
         try
         {
             // 1. Supprimer les détails Staff (si existent)
             if (contactToDelete.StaffDetails != null)
             {
-                _context.StaffDetails.Remove(contactToDelete.StaffDetails);
+                Context.StaffDetails.Remove(contactToDelete.StaffDetails);
             }
 
             // 2. Supprimer le contact
-            _context.Contacts.Remove(contactToDelete);
+            Context.Contacts.Remove(contactToDelete);
             
             // Sauvegarder la suppression du contact et staff
-            await _context.SaveChangesAsync(); 
+            await Context.SaveChangesAsync(); 
 
             // 3. Supprimer le compte de connexion (ApplicationUser)
             if (contactToDelete.UserId != null)

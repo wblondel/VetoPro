@@ -12,23 +12,13 @@ using FluentValidation;
 namespace VetoPro.Api.Controllers.Financials;
 
 [Authorize]
-public class InvoicesController : BaseApiController
+public class InvoicesController(
+    VetoProDbContext context,
+    IValidator<InvoiceCreateDto> invoiceCreateValidator,
+    IValidator<InvoiceUpdateDto> invoiceUpdateValidator,
+    IValidator<PaymentCreateDto> paymentCreateValidator)
+    : BaseApiController(context)
 {
-    private readonly IValidator<InvoiceCreateDto> _invoiceCreateValidator;
-    private readonly IValidator<InvoiceUpdateDto> _invoiceUpdateValidator;
-    private readonly IValidator<PaymentCreateDto> _paymentCreateValidator;
-    
-    public InvoicesController(
-        VetoProDbContext context,
-        IValidator<InvoiceCreateDto> invoiceCreateValidator,
-        IValidator<InvoiceUpdateDto> invoiceUpdateValidator,
-        IValidator<PaymentCreateDto> paymentCreateValidator) : base(context)
-    {
-        _invoiceCreateValidator = invoiceCreateValidator;
-        _invoiceUpdateValidator = invoiceUpdateValidator;
-        _paymentCreateValidator = paymentCreateValidator;
-    }
-
     /// <summary>
     /// GET: api/invoices
     /// Récupère la liste de toutes les factures (sans les lignes de détail).
@@ -40,7 +30,7 @@ public class InvoicesController : BaseApiController
     {
         // Note : Ce DTO est partiel (sans les lignes) pour la performance.
         // Un DTO "InvoiceSummaryDto" serait idéal, mais nous réutilisons InvoiceDto.
-        var query = _context.Invoices
+        var query = Context.Invoices
             .Include(i => i.Client)
             .OrderByDescending(i => i.IssueDate)
             .AsQueryable();
@@ -55,7 +45,7 @@ public class InvoicesController : BaseApiController
     [HttpGet("{id}")]
     public async Task<ActionResult<InvoiceDto>> GetInvoiceById(Guid id)
     {
-        var invoice = await _context.Invoices
+        var invoice = await Context.Invoices
             .Include(i => i.Client)
             .Include(i => i.InvoiceLines) // Charger les lignes
             .Include(i => i.Payments) // Charger les paiements
@@ -71,7 +61,7 @@ public class InvoicesController : BaseApiController
         if (!User.IsInRole("Admin") && !User.IsInRole("Doctor"))
         {
             var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            var userContact = await _context.Contacts.FirstOrDefaultAsync(c => c.UserId.ToString() == currentUserId);
+            var userContact = await Context.Contacts.FirstOrDefaultAsync(c => c.UserId.ToString() == currentUserId);
 
             if (invoice.Client.Id != userContact?.Id)
             {
@@ -91,28 +81,28 @@ public class InvoicesController : BaseApiController
     [Authorize(Roles = "Admin, Doctor")]
     public async Task<ActionResult<InvoiceDto>> CreateInvoice([FromBody] InvoiceCreateDto createDto)
     {
-        var validationResult = await _invoiceCreateValidator.ValidateAsync(createDto);
+        var validationResult = await invoiceCreateValidator.ValidateAsync(createDto);
         if (!validationResult.IsValid)
         {
             return ValidationProblem(new ValidationProblemDetails(validationResult.ToDictionary()));
         }
         
         // Utiliser une transaction pour garantir que la facture ET ses lignes sont créées, ou rien.
-        await using var transaction = await _context.Database.BeginTransactionAsync();
+        await using var transaction = await Context.Database.BeginTransactionAsync();
         try
         {
             // 1. Valider les clés étrangères (Client, Consultation)
-            if (!await _context.Contacts.AnyAsync(c => c.Id == createDto.ClientId))
+            if (!await Context.Contacts.AnyAsync(c => c.Id == createDto.ClientId))
             {
                 return BadRequest("L'ID du client (ClientId) n'existe pas.");
             }
-            if (createDto.ConsultationId.HasValue && !await _context.Consultations.AnyAsync(c => c.Id == createDto.ConsultationId.Value))
+            if (createDto.ConsultationId.HasValue && !await Context.Consultations.AnyAsync(c => c.Id == createDto.ConsultationId.Value))
             {
                 return BadRequest("L'ID de la consultation (ConsultationId) n'existe pas.");
             }
             
             // 2. Valider le numéro de facture (contrainte unique)
-            if (await _context.Invoices.AnyAsync(i => i.InvoiceNumber == createDto.InvoiceNumber))
+            if (await Context.Invoices.AnyAsync(i => i.InvoiceNumber == createDto.InvoiceNumber))
             {
                 return Conflict("Ce numéro de facture (InvoiceNumber) est déjà utilisé.");
             }
@@ -127,13 +117,13 @@ public class InvoicesController : BaseApiController
                 // Valider l'article (Service ou Produit)
                 if (lineDto.ItemType.Equals("Service", StringComparison.OrdinalIgnoreCase))
                 {
-                    var service = await _context.Services.FindAsync(lineDto.ItemId);
+                    var service = await Context.Services.FindAsync(lineDto.ItemId);
                     if (service == null) return BadRequest($"La ligne de service avec ItemId {lineDto.ItemId} n'existe pas.");
                     description = service.Name;
                 }
                 else if (lineDto.ItemType.Equals("Product", StringComparison.OrdinalIgnoreCase))
                 {
-                    var product = await _context.Products.FindAsync(lineDto.ItemId);
+                    var product = await Context.Products.FindAsync(lineDto.ItemId);
                     if (product == null) return BadRequest($"La ligne de produit avec ItemId {lineDto.ItemId} n'existe pas.");
                     description = product.Name;
                     // TODO: Gérer la déduction du stock (product.StockQuantity -= lineDto.Quantity)
@@ -170,12 +160,12 @@ public class InvoicesController : BaseApiController
                 InvoiceLines = newInvoiceLines // Attacher les lignes
             };
 
-            _context.Invoices.Add(newInvoice);
-            await _context.SaveChangesAsync();
+            Context.Invoices.Add(newInvoice);
+            await Context.SaveChangesAsync();
             await transaction.CommitAsync();
 
             // 5. Recharger et renvoyer le DTO complet
-            var createdInvoice = await _context.Invoices
+            var createdInvoice = await Context.Invoices
                 .Include(i => i.Client)
                 .Include(i => i.InvoiceLines)
                 .Include(i => i.Payments)
@@ -198,16 +188,16 @@ public class InvoicesController : BaseApiController
     [Authorize(Roles = "Admin, Doctor")]
     public async Task<IActionResult> UpdateInvoice(Guid id, [FromBody] InvoiceUpdateDto updateDto)
     {
-        var validationResult = await _invoiceUpdateValidator.ValidateAsync(updateDto);
+        var validationResult = await invoiceUpdateValidator.ValidateAsync(updateDto);
         if (!validationResult.IsValid)
         {
             return ValidationProblem(new ValidationProblemDetails(validationResult.ToDictionary()));
         }
         
-        await using var transaction = await _context.Database.BeginTransactionAsync();
+        await using var transaction = await Context.Database.BeginTransactionAsync();
         try
         {
-            var invoiceToUpdate = await _context.Invoices
+            var invoiceToUpdate = await Context.Invoices
                 .Include(i => i.InvoiceLines) // Charger les lignes existantes
                 .FirstOrDefaultAsync(i => i.Id == id);
 
@@ -222,13 +212,13 @@ public class InvoicesController : BaseApiController
                 return BadRequest($"La facture ne peut pas être modifiée car son statut est '{invoiceToUpdate.Status}'.");
             }
             
-            if (await _context.Invoices.AnyAsync(i => i.InvoiceNumber == updateDto.InvoiceNumber && i.Id != id))
+            if (await Context.Invoices.AnyAsync(i => i.InvoiceNumber == updateDto.InvoiceNumber && i.Id != id))
             {
                 return Conflict("Ce numéro de facture (InvoiceNumber) est déjà utilisé par une autre facture.");
             }
 
             // 1. Valider les clés étrangères
-            if (updateDto.ClientId != invoiceToUpdate.ClientId && !await _context.Contacts.AnyAsync(c => c.Id == updateDto.ClientId))
+            if (updateDto.ClientId != invoiceToUpdate.ClientId && !await Context.Contacts.AnyAsync(c => c.Id == updateDto.ClientId))
             {
                 return BadRequest("Le nouvel ID client n'existe pas.");
             }
@@ -245,7 +235,7 @@ public class InvoicesController : BaseApiController
             {
                 if (!newLineDtosById.ContainsKey(existingLine.Id))
                 {
-                    _context.InvoiceLines.Remove(existingLine);
+                    Context.InvoiceLines.Remove(existingLine);
                 }
             }
 
@@ -257,13 +247,13 @@ public class InvoicesController : BaseApiController
                 // ... (Validation de ItemId et ItemType comme dans CreateInvoice) ...
                 if (lineDto.ItemType.Equals("Service", StringComparison.OrdinalIgnoreCase))
                 {
-                    var service = await _context.Services.FindAsync(lineDto.ItemId);
+                    var service = await Context.Services.FindAsync(lineDto.ItemId);
                     if (service == null) return BadRequest($"La ligne de service avec ItemId {lineDto.ItemId} n'existe pas.");
                     description = service.Name;
                 }
                 else
                 {
-                    var product = await _context.Products.FindAsync(lineDto.ItemId);
+                    var product = await Context.Products.FindAsync(lineDto.ItemId);
                     if (product == null) return BadRequest($"La ligne de produit avec ItemId {lineDto.ItemId} n'existe pas.");
                     description = product.Name;
                 }
@@ -306,7 +296,7 @@ public class InvoicesController : BaseApiController
             invoiceToUpdate.Status = updateDto.Status;
             invoiceToUpdate.TotalAmount = calculatedTotal;
 
-            await _context.SaveChangesAsync();
+            await Context.SaveChangesAsync();
             await transaction.CommitAsync();
         }
         catch (Exception ex)
@@ -326,7 +316,7 @@ public class InvoicesController : BaseApiController
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeleteInvoice(Guid id)
     {
-        var invoiceToDelete = await _context.Invoices
+        var invoiceToDelete = await Context.Invoices
             .Include(i => i.Payments)
             .Include(i => i.InvoiceLines)
             .FirstOrDefaultAsync(i => i.Id == id);
@@ -350,10 +340,10 @@ public class InvoicesController : BaseApiController
         
         // La suppression en cascade (configurée dans le DbContext ou par défaut)
         // devrait supprimer les InvoiceLines. Mais nous pouvons être explicites.
-        _context.InvoiceLines.RemoveRange(invoiceToDelete.InvoiceLines);
-        _context.Invoices.Remove(invoiceToDelete);
+        Context.InvoiceLines.RemoveRange(invoiceToDelete.InvoiceLines);
+        Context.Invoices.Remove(invoiceToDelete);
 
-        await _context.SaveChangesAsync();
+        await Context.SaveChangesAsync();
 
         return NoContent();
     }
@@ -365,7 +355,7 @@ public class InvoicesController : BaseApiController
     [HttpGet("{id}/payments")]
     public async Task<ActionResult<IEnumerable<PaymentDto>>> GetPaymentsForInvoice(Guid id)
     {
-        var invoice = await _context.Invoices.FindAsync(id);
+        var invoice = await Context.Invoices.FindAsync(id);
         //if (!await _context.Invoices.AnyAsync(i => i.Id == id))
         if (invoice == null)
         {
@@ -375,7 +365,7 @@ public class InvoicesController : BaseApiController
         if (!User.IsInRole("Admin") && !User.IsInRole("Doctor"))
         {
             var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            var userContact = await _context.Contacts.FirstOrDefaultAsync(c => c.UserId.ToString() == currentUserId);
+            var userContact = await Context.Contacts.FirstOrDefaultAsync(c => c.UserId.ToString() == currentUserId);
 
             if (invoice.ClientId != userContact?.Id)
             {
@@ -383,7 +373,7 @@ public class InvoicesController : BaseApiController
             }
         }
         
-        var payments = await _context.Payments
+        var payments = await Context.Payments
             .Where(p => p.InvoiceId == id)
             .OrderBy(p => p.PaymentDate)
             .Select(p => p.ToDto())
@@ -400,7 +390,7 @@ public class InvoicesController : BaseApiController
     [Authorize(Roles = "Admin, Doctor")]
     public async Task<ActionResult<PaymentDto>> CreatePaymentForInvoice(Guid id, [FromBody] PaymentCreateDto createDto)
     {
-        var validationResult = await _paymentCreateValidator.ValidateAsync(createDto);
+        var validationResult = await paymentCreateValidator.ValidateAsync(createDto);
         if (!validationResult.IsValid)
         {
             return ValidationProblem(new ValidationProblemDetails(validationResult.ToDictionary()));
@@ -412,7 +402,7 @@ public class InvoicesController : BaseApiController
             return BadRequest("L'ID de la facture dans l'URL ne correspond pas à l'ID dans le corps de la requête.");
         }
 
-        var invoice = await _context.Invoices
+        var invoice = await Context.Invoices
             .Include(i => i.Payments) // Charger les paiements existants
             .FirstOrDefaultAsync(i => i.Id == id);
 
@@ -445,7 +435,7 @@ public class InvoicesController : BaseApiController
             TransactionId = createDto.TransactionId
         };
 
-        _context.Payments.Add(newPayment);
+        Context.Payments.Add(newPayment);
 
         // 2. Mettre à jour le statut de la facture
         if (totalPaid + createDto.Amount >= invoice.TotalAmount)
@@ -457,7 +447,7 @@ public class InvoicesController : BaseApiController
             invoice.Status = "Sent"; // TODO: supporter les paiements partiels avec "PartiallyPaid" 
         }
 
-        await _context.SaveChangesAsync();
+        await Context.SaveChangesAsync();
 
         // 3. Mapper et renvoyer le DTO
         var paymentDto = newPayment.ToDto();

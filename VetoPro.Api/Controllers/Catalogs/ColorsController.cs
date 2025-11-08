@@ -14,20 +14,12 @@ using FluentValidation;
 namespace VetoPro.Api.Controllers.Catalogs;
 
 [Authorize]
-public class ColorsController : BaseApiController
+public class ColorsController(
+    VetoProDbContext context,
+    IValidator<ColorCreateDto> colorCreateValidator,
+    IValidator<ColorUpdateDto> colorUpdateValidator)
+    : BaseApiController(context)
 {
-    private readonly IValidator<ColorCreateDto> _colorCreateValidator;
-    private readonly IValidator<ColorUpdateDto> _colorUpdateValidator;
-    
-    public ColorsController(
-        VetoProDbContext context,
-        IValidator<ColorCreateDto> colorCreateValidator,
-        IValidator<ColorUpdateDto> colorUpdateValidator) : base(context)
-    {
-        _colorCreateValidator = colorCreateValidator;
-        _colorUpdateValidator = colorUpdateValidator;
-    }
-
     /// <summary>
     /// GET: api/colors
     /// Récupère la liste de toutes les couleurs.
@@ -37,7 +29,7 @@ public class ColorsController : BaseApiController
     [AllowAnonymous]
     public async Task<ActionResult<IEnumerable<ColorDto>>> GetAllColors([FromQuery] PaginationParams paginationParams)
     {
-        var query = _context.Colors
+        var query = Context.Colors
             .OrderBy(c => c.Name)
             .AsQueryable();
         
@@ -52,7 +44,7 @@ public class ColorsController : BaseApiController
     [AllowAnonymous]
     public async Task<ActionResult<ColorDto>> GetColorById(Guid id)
     {
-        var color = await _context.Colors
+        var color = await Context.Colors
             .Select(c => new ColorDto
             {
                 Id = c.Id,
@@ -77,14 +69,14 @@ public class ColorsController : BaseApiController
     [Authorize(Roles = "Admin, Doctor")]
     public async Task<ActionResult<ColorDto>> CreateColor([FromBody] ColorCreateDto createDto)
     {
-        var validationResult = await _colorCreateValidator.ValidateAsync(createDto);
+        var validationResult = await colorCreateValidator.ValidateAsync(createDto);
         if (!validationResult.IsValid)
         {
             return ValidationProblem(new ValidationProblemDetails(validationResult.ToDictionary()));
         }
         
         // Vérifier si le nom existe déjà (basé sur notre contrainte unique)
-        if (await _context.Colors.AnyAsync(c => c.Name == createDto.Name))
+        if (await Context.Colors.AnyAsync(c => c.Name == createDto.Name))
         {
             // Retourne un 409 Conflict si le nom est déjà pris
             return Conflict("Une couleur avec ce nom existe déjà.");
@@ -99,8 +91,8 @@ public class ColorsController : BaseApiController
         
         // Note : L'Id, CreatedAt, UpdatedAt sont gérés par le DbContext (SaveChanges)
 
-        _context.Colors.Add(newColor);
-        await _context.SaveChangesAsync();
+        Context.Colors.Add(newColor);
+        await Context.SaveChangesAsync();
 
         // Mapper l'entité créée vers le DTO de retour
         var colorDto = new ColorDto
@@ -122,13 +114,13 @@ public class ColorsController : BaseApiController
     [Authorize(Roles = "Admin, Doctor")]
     public async Task<IActionResult> UpdateColor(Guid id, [FromBody] ColorUpdateDto updateDto)
     {
-        var validationResult = await _colorUpdateValidator.ValidateAsync(updateDto);
+        var validationResult = await colorUpdateValidator.ValidateAsync(updateDto);
         if (!validationResult.IsValid)
         {
             return ValidationProblem(new ValidationProblemDetails(validationResult.ToDictionary()));
         }
         
-        var colorToUpdate = await _context.Colors.FindAsync(id);
+        var colorToUpdate = await Context.Colors.FindAsync(id);
 
         if (colorToUpdate == null)
         {
@@ -136,7 +128,7 @@ public class ColorsController : BaseApiController
         }
 
         // Vérifier si le nouveau nom est déjà pris par une *autre* couleur
-        if (await _context.Colors.AnyAsync(c => c.Name == updateDto.Name && c.Id != id))
+        if (await Context.Colors.AnyAsync(c => c.Name == updateDto.Name && c.Id != id))
         {
             return Conflict("Une autre couleur avec ce nom existe déjà.");
         }
@@ -148,13 +140,13 @@ public class ColorsController : BaseApiController
 
         try
         {
-            await _context.SaveChangesAsync();
+            await Context.SaveChangesAsync();
         }
         catch (DbUpdateConcurrencyException)
         {
             // Gérer le cas où l'entité a été supprimée par un autre utilisateur
             // entre le FindAsync et le SaveChangesAsync
-            if (!_context.Colors.Any(c => c.Id == id))
+            if (!Context.Colors.Any(c => c.Id == id))
             {
                 return NotFound();
             }
@@ -176,7 +168,7 @@ public class ColorsController : BaseApiController
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeleteColor(Guid id)
     {
-        var colorToDelete = await _context.Colors.FindAsync(id);
+        var colorToDelete = await Context.Colors.FindAsync(id);
 
         if (colorToDelete == null)
         {
@@ -184,7 +176,7 @@ public class ColorsController : BaseApiController
         }
 
         // Vérification de sécurité : une couleur est-elle utilisée par un patient ?
-        var isUsed = await _context.Entry(colorToDelete)
+        var isUsed = await Context.Entry(colorToDelete)
             .Collection(c => c.Patients)
             .Query() // Permet de faire une requête sur la collection
             .AnyAsync();
@@ -195,8 +187,8 @@ public class ColorsController : BaseApiController
             return BadRequest("Cette couleur ne peut pas être supprimée car elle est utilisée par un ou plusieurs patients.");
         }
 
-        _context.Colors.Remove(colorToDelete);
-        await _context.SaveChangesAsync();
+        Context.Colors.Remove(colorToDelete);
+        await Context.SaveChangesAsync();
 
         // Retourne un 204 No Content, signifiant que la suppression a réussi
         return NoContent();

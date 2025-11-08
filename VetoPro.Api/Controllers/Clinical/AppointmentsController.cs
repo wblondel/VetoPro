@@ -12,20 +12,12 @@ using VetoPro.Contracts.DTOs.Clinical;
 namespace VetoPro.Api.Controllers.Clinical;
 
 [Authorize]
-public class AppointmentsController : BaseApiController
+public class AppointmentsController(
+    VetoProDbContext context,
+    IValidator<AppointmentCreateDto> appointmentCreateValidator,
+    IValidator<AppointmentUpdateDto> appointmentUpdateValidator)
+    : BaseApiController(context)
 {
-    private readonly IValidator<AppointmentCreateDto> _appointmentCreateValidator;
-    private readonly IValidator<AppointmentUpdateDto> _appointmentUpdateValidator;
-    
-    public AppointmentsController(
-        VetoProDbContext context,
-        IValidator<AppointmentCreateDto> appointmentCreateValidator,
-        IValidator<AppointmentUpdateDto> appointmentUpdateValidator) : base(context)
-    {
-        _appointmentCreateValidator = appointmentCreateValidator;
-        _appointmentUpdateValidator = appointmentUpdateValidator;
-    }
-
     /// <summary>
     /// GET: api/appointments
     /// Récupère la liste des rendez-vous.
@@ -48,7 +40,7 @@ public class AppointmentsController : BaseApiController
         if (errorResult != null) return errorResult;
         
         // Commencer la requête de base
-        var query = _context.Appointments
+        var query = Context.Appointments
             .Include(a => a.Client)
             .Include(a => a.Patient)
             .Include(a => a.Doctor) // Le docteur est optionnel, Include gère le 'null'
@@ -92,7 +84,7 @@ public class AppointmentsController : BaseApiController
     [HttpGet("{id}")]
     public async Task<ActionResult<AppointmentDto>> GetAppointmentById(Guid id)
     {
-        var appointment = await _context.Appointments
+        var appointment = await Context.Appointments
             .Include(a => a.Client)
             .Include(a => a.Patient)
             .Include(a => a.Doctor)
@@ -125,7 +117,7 @@ public class AppointmentsController : BaseApiController
     [HttpPost]
     public async Task<ActionResult<AppointmentDto>> CreateAppointment([FromBody] AppointmentCreateDto createDto)
     {
-        var validationResult = await _appointmentCreateValidator.ValidateAsync(createDto);
+        var validationResult = await appointmentCreateValidator.ValidateAsync(createDto);
         if (!validationResult.IsValid)
         {
             // FluentValidation populates ModelState, so this returns a detailed 400
@@ -145,16 +137,16 @@ public class AppointmentsController : BaseApiController
         }
         
         // 2. Valider les clés étrangères
-        if (!await _context.Contacts.AnyAsync(c => c.Id == createDto.ClientId && c.IsClient))
+        if (!await Context.Contacts.AnyAsync(c => c.Id == createDto.ClientId && c.IsClient))
         {
             return BadRequest("L'ID du client (ClientId) n'existe pas ou n'est pas un client.");
         }
-        if (!await _context.Patients.AnyAsync(p => p.Id == createDto.PatientId))
+        if (!await Context.Patients.AnyAsync(p => p.Id == createDto.PatientId))
         {
             return BadRequest("L'ID du patient (PatientId) n'existe pas.");
         }
         if (createDto.DoctorContactId.HasValue &&
-            !await _context.Contacts.AnyAsync(c => c.Id == createDto.DoctorContactId.Value && c.IsStaff))
+            !await Context.Contacts.AnyAsync(c => c.Id == createDto.DoctorContactId.Value && c.IsStaff))
         {
             return BadRequest("L'ID du docteur (DoctorContactId) n'existe pas ou n'est pas un membre du personnel.");
         }
@@ -172,12 +164,12 @@ public class AppointmentsController : BaseApiController
             Status = createDto.Status
         };
 
-        _context.Appointments.Add(newAppointment);
-        await _context.SaveChangesAsync();
+        Context.Appointments.Add(newAppointment);
+        await Context.SaveChangesAsync();
 
         // 4. Mapper en retour pour la réponse 201
         // Nous devons recharger l'entité pour obtenir les objets navigués (Client, Patient, etc.)
-        var createdAppointment = await _context.Appointments
+        var createdAppointment = await Context.Appointments
             .Include(a => a.Client)
             .Include(a => a.Patient)
             .Include(a => a.Doctor)
@@ -197,13 +189,13 @@ public class AppointmentsController : BaseApiController
     [HttpPut("{id}")]
     public async Task<IActionResult> UpdateAppointment(Guid id, [FromBody] AppointmentUpdateDto updateDto)
     {
-        var validationResult = await _appointmentUpdateValidator.ValidateAsync(updateDto);
+        var validationResult = await appointmentUpdateValidator.ValidateAsync(updateDto);
         if (!validationResult.IsValid)
         {
             return ValidationProblem(new ValidationProblemDetails(validationResult.ToDictionary()));
         }
         
-        var appointmentToUpdate = await _context.Appointments.FindAsync(id);
+        var appointmentToUpdate = await Context.Appointments.FindAsync(id);
 
         if (appointmentToUpdate == null)
         {
@@ -230,18 +222,18 @@ public class AppointmentsController : BaseApiController
 
         // 2. Valider les clés étrangères (seulement si elles changent)
         if (updateDto.ClientId != appointmentToUpdate.ClientId &&
-            !await _context.Contacts.AnyAsync(c => c.Id == updateDto.ClientId && c.IsClient))
+            !await Context.Contacts.AnyAsync(c => c.Id == updateDto.ClientId && c.IsClient))
         {
             return BadRequest("Le nouvel ID client n'existe pas ou n'est pas un client.");
         }
         if (updateDto.PatientId != appointmentToUpdate.PatientId &&
-            !await _context.Patients.AnyAsync(p => p.Id == updateDto.PatientId))
+            !await Context.Patients.AnyAsync(p => p.Id == updateDto.PatientId))
         {
             return BadRequest("Le nouvel ID patient n'existe pas.");
         }
         if (updateDto.DoctorContactId != appointmentToUpdate.DoctorContactId &&
             updateDto.DoctorContactId.HasValue &&
-            !await _context.Contacts.AnyAsync(c => c.Id == updateDto.DoctorContactId.Value && c.IsStaff))
+            !await Context.Contacts.AnyAsync(c => c.Id == updateDto.DoctorContactId.Value && c.IsStaff))
         {
             return BadRequest("Le nouvel ID docteur n'existe pas ou n'est pas un membre du personnel.");
         }
@@ -257,7 +249,7 @@ public class AppointmentsController : BaseApiController
         appointmentToUpdate.Status = updateDto.Status;
         // UpdatedAt sera géré par le DbContext
 
-        await _context.SaveChangesAsync();
+        await Context.SaveChangesAsync();
 
         return NoContent(); // 204 No Content
     }
@@ -270,7 +262,7 @@ public class AppointmentsController : BaseApiController
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeleteAppointment(Guid id)
     {
-        var appointmentToDelete = await _context.Appointments
+        var appointmentToDelete = await Context.Appointments
             .Include(a => a.Consultation) // Charger la consultation liée
             .FirstOrDefaultAsync(a => a.Id == id);
 
@@ -286,8 +278,8 @@ public class AppointmentsController : BaseApiController
             return BadRequest("Ce rendez-vous ne peut pas être supprimé car il est lié à une consultation. Veuillez plutôt changer son statut en 'Annulé'.");
         }
 
-        _context.Appointments.Remove(appointmentToDelete);
-        await _context.SaveChangesAsync();
+        Context.Appointments.Remove(appointmentToDelete);
+        await Context.SaveChangesAsync();
 
         return NoContent();
     }
@@ -300,7 +292,7 @@ public class AppointmentsController : BaseApiController
     public async Task<ActionResult<ConsultationDto>> GetConsultationForAppointment(Guid id)
     {
         // On vérifie d'abord si le RDV existe
-        var appointment = await _context.Appointments.FindAsync(id);
+        var appointment = await Context.Appointments.FindAsync(id);
         if (appointment == null) return NotFound("Rendez-vous non trouvé.");
         
         var (userContactId, errorResult) = await GetUserContactId();
@@ -315,7 +307,7 @@ public class AppointmentsController : BaseApiController
             return Forbid();
         }
         
-        var consultation = await _context.Consultations
+        var consultation = await Context.Consultations
             .Include(c => c.Client)
             .Include(c => c.Patient)
             .Include(c => c.Doctor)
@@ -340,28 +332,28 @@ public class AppointmentsController : BaseApiController
     public async Task<ActionResult<ConsultationDto>> CreateConsultationForAppointment(Guid id, [FromBody] ConsultationCreateDto createDto)
     {
         // 1. Trouver le rendez-vous parent
-        var appointment = await _context.Appointments.FindAsync(id);
+        var appointment = await Context.Appointments.FindAsync(id);
         if (appointment == null)
         {
             return NotFound("Le rendez-vous (AppointmentId) n'a pas été trouvé.");
         }
 
         // 2. Vérifier si une consultation existe déjà (relation 1-à-1)
-        if (await _context.Consultations.AnyAsync(c => c.AppointmentId == id))
+        if (await Context.Consultations.AnyAsync(c => c.AppointmentId == id))
         {
             return Conflict("Ce rendez-vous a déjà un compte-rendu de consultation.");
         }
 
         // 3. Valider le docteur
-        var doctor = await _context.Contacts.FirstOrDefaultAsync(c => c.Id == createDto.DoctorId && c.IsStaff);
+        var doctor = await Context.Contacts.FirstOrDefaultAsync(c => c.Id == createDto.DoctorId && c.IsStaff);
         if (doctor == null)
         {
             return BadRequest("L'ID du docteur n'est pas valide ou n'est pas un membre du personnel.");
         }
 
         // 4. Récupérer le patient et le client (pour le DTO de retour)
-        var patient = await _context.Patients.FindAsync(appointment.PatientId);
-        var client = await _context.Contacts.FindAsync(appointment.ClientId);
+        var patient = await Context.Patients.FindAsync(appointment.PatientId);
+        var client = await Context.Contacts.FindAsync(appointment.ClientId);
         // Ces vérifications ne sont pas nécessaires car l'intégrité de la BDD garantit
         // qu'ils existent si le RDV existe.
 
@@ -385,12 +377,12 @@ public class AppointmentsController : BaseApiController
             Prescriptions = createDto.Prescriptions
         };
 
-        _context.Consultations.Add(newConsultation);
+        Context.Consultations.Add(newConsultation);
 
         // 6. Mettre à jour le statut du RDV (bonne pratique)
         appointment.Status = "Completed";
 
-        await _context.SaveChangesAsync();
+        await Context.SaveChangesAsync();
 
         // 7. Mapper et renvoyer le DTO
         // Nous attachons manuellement les objets navigués pour le mapping

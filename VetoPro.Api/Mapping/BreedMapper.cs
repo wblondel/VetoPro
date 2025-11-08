@@ -14,13 +14,29 @@ public static class BreedMapper
     {
         // Handle potential null Species (though FK constraint makes it unlikely)
         var speciesName = (b.Species != null) ? b.Species.Name : "N/A";
+        var speciesId = (b.Species != null) ? b.Species.Id : Guid.Empty;
 
         return new BreedDto
         {
             Id = b.Id,
             Name = b.Name,
-            SpeciesId = b.SpeciesId,
+            SpeciesId = speciesId,
             SpeciesName = speciesName
+        };
+    }
+    
+    /// <summary>
+    /// Surcharge optimisée pour le mapper BreedDto.
+    /// Utilisé lorsque le nom de l'espèce est déjà connu et n'a pas besoin d'être chargé.
+    /// </summary>
+    public static BreedDto ToDto(this Breed b, string speciesName)
+    {
+        return new BreedDto
+        {
+            Id = b.Id,
+            Name = b.Name,
+            SpeciesId = b.SpeciesId, // SpeciesId est directement sur l'entité Breed
+            SpeciesName = speciesName // Utilise le nom fourni
         };
     }
 }

@@ -12,20 +12,12 @@ using FluentValidation;
 namespace VetoPro.Api.Controllers.Catalogs;
 
 [Authorize]
-public class PriceListsController : BaseApiController
+public class PriceListsController(
+    VetoProDbContext context,
+    IValidator<PriceListCreateDto> priceListCreateValidator,
+    IValidator<PriceListUpdateDto> priceListUpdateValidator)
+    : BaseApiController(context)
 {
-    private readonly IValidator<PriceListCreateDto> _priceListCreateValidator;
-    private readonly IValidator<PriceListUpdateDto> _priceListUpdateValidator;
-    
-    public PriceListsController(
-        VetoProDbContext context,
-        IValidator<PriceListCreateDto> priceListCreateValidator,
-        IValidator<PriceListUpdateDto> priceListUpdateValidator) : base(context)
-    {
-        _priceListCreateValidator = priceListCreateValidator;
-        _priceListUpdateValidator = priceListUpdateValidator;
-    }
-
     /// <summary>
     /// GET: api/pricelists
     /// Récupère toutes les règles de prix, avec les noms des services et espèces.
@@ -35,7 +27,7 @@ public class PriceListsController : BaseApiController
     [AllowAnonymous]
     public async Task<ActionResult<IEnumerable<PriceListDto>>> GetAllPriceRules([FromQuery] PaginationParams paginationParams)
     {
-        var query = _context.PriceList
+        var query = Context.PriceList
             .Include(pl => pl.Service) // Jointure avec Services
             .Include(pl => pl.Species) // Jointure avec Species (gère les null)
             .OrderBy(pl => pl.Service.Name).ThenBy(pl => pl.Species.Name)
@@ -52,7 +44,7 @@ public class PriceListsController : BaseApiController
     [AllowAnonymous]
     public async Task<ActionResult<PriceListDto>> GetPriceRuleById(Guid id)
     {
-        var priceRule = await _context.PriceList
+        var priceRule = await Context.PriceList
             .Include(pl => pl.Service)
             .Include(pl => pl.Species)
             .Where(pl => pl.Id == id)
@@ -75,12 +67,12 @@ public class PriceListsController : BaseApiController
     [AllowAnonymous]
     public async Task<ActionResult<IEnumerable<PriceListDto>>> GetPriceRulesForService(Guid serviceId)
     {
-        if (!await _context.Services.AnyAsync(s => s.Id == serviceId))
+        if (!await Context.Services.AnyAsync(s => s.Id == serviceId))
         {
             return NotFound("Service non trouvé.");
         }
         
-        var priceRules = await _context.PriceList
+        var priceRules = await Context.PriceList
             .Include(pl => pl.Service)
             .Include(pl => pl.Species)
             .Where(pl => pl.ServiceId == serviceId)
@@ -99,18 +91,18 @@ public class PriceListsController : BaseApiController
     [Authorize(Roles = "Admin, Doctor")]
     public async Task<ActionResult<PriceListDto>> CreatePriceRule([FromBody] PriceListCreateDto createDto)
     {
-        var validationResult = await _priceListCreateValidator.ValidateAsync(createDto);
+        var validationResult = await priceListCreateValidator.ValidateAsync(createDto);
         if (!validationResult.IsValid)
         {
             return ValidationProblem(new ValidationProblemDetails(validationResult.ToDictionary()));
         }
         
         // 1. Valider les clés étrangères
-        if (!await _context.Services.AnyAsync(s => s.Id == createDto.ServiceId))
+        if (!await Context.Services.AnyAsync(s => s.Id == createDto.ServiceId))
         {
             return BadRequest("L'ID du service (ServiceId) n'existe pas.");
         }
-        if (createDto.SpeciesId.HasValue && !await _context.Species.AnyAsync(s => s.Id == createDto.SpeciesId.Value))
+        if (createDto.SpeciesId.HasValue && !await Context.Species.AnyAsync(s => s.Id == createDto.SpeciesId.Value))
         {
             return BadRequest("L'ID de l'espèce (SpeciesId) n'existe pas.");
         }
@@ -133,11 +125,11 @@ public class PriceListsController : BaseApiController
             IsActive = createDto.IsActive
         };
 
-        _context.PriceList.Add(newPriceRule);
-        await _context.SaveChangesAsync();
+        Context.PriceList.Add(newPriceRule);
+        await Context.SaveChangesAsync();
 
         // 4. Mapper en retour pour la réponse 201
-        var createdPriceRule = await _context.PriceList
+        var createdPriceRule = await Context.PriceList
             .Include(pl => pl.Service)
             .Include(pl => pl.Species)
             .FirstAsync(pl => pl.Id == newPriceRule.Id);
@@ -153,13 +145,13 @@ public class PriceListsController : BaseApiController
     [Authorize(Roles = "Admin, Doctor")]
     public async Task<IActionResult> UpdatePriceRule(Guid id, [FromBody] PriceListUpdateDto updateDto)
     {
-        var validationResult = await _priceListUpdateValidator.ValidateAsync(updateDto);
+        var validationResult = await priceListUpdateValidator.ValidateAsync(updateDto);
         if (!validationResult.IsValid)
         {
             return ValidationProblem(new ValidationProblemDetails(validationResult.ToDictionary()));
         }
         
-        var ruleToUpdate = await _context.PriceList.FindAsync(id);
+        var ruleToUpdate = await Context.PriceList.FindAsync(id);
 
         if (ruleToUpdate == null)
         {
@@ -167,13 +159,13 @@ public class PriceListsController : BaseApiController
         }
 
         // 1. Valider les clés étrangères (si elles changent)
-        if (updateDto.ServiceId != ruleToUpdate.ServiceId && !await _context.Services.AnyAsync(s => s.Id == updateDto.ServiceId))
+        if (updateDto.ServiceId != ruleToUpdate.ServiceId && !await Context.Services.AnyAsync(s => s.Id == updateDto.ServiceId))
         {
             return BadRequest("Le nouvel ID service n'existe pas.");
         }
         if (updateDto.SpeciesId != ruleToUpdate.SpeciesId && 
             updateDto.SpeciesId.HasValue && 
-            !await _context.Species.AnyAsync(s => s.Id == updateDto.SpeciesId.Value))
+            !await Context.Species.AnyAsync(s => s.Id == updateDto.SpeciesId.Value))
         {
             return BadRequest("Le nouvel ID espèce n'existe pas.");
         }
@@ -193,7 +185,7 @@ public class PriceListsController : BaseApiController
         ruleToUpdate.Currency = updateDto.Currency;
         ruleToUpdate.IsActive = updateDto.IsActive;
 
-        await _context.SaveChangesAsync();
+        await Context.SaveChangesAsync();
 
         return NoContent(); // 204 No Content
     }
@@ -206,7 +198,7 @@ public class PriceListsController : BaseApiController
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeletePriceRule(Guid id)
     {
-        var ruleToDelete = await _context.PriceList.FindAsync(id);
+        var ruleToDelete = await Context.PriceList.FindAsync(id);
 
         if (ruleToDelete == null)
         {
@@ -215,8 +207,8 @@ public class PriceListsController : BaseApiController
         
         // Il n'y a pas de dépendance bloquante directe sur cette table,
         // la suppression est donc "sécurisée" (elle ne casse pas de factures existantes).
-        _context.PriceList.Remove(ruleToDelete);
-        await _context.SaveChangesAsync();
+        Context.PriceList.Remove(ruleToDelete);
+        await Context.SaveChangesAsync();
 
         return NoContent();
     }

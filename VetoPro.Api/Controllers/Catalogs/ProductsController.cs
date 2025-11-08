@@ -12,20 +12,12 @@ using FluentValidation;
 namespace VetoPro.Api.Controllers.Catalogs;
 
 [Authorize]
-public class ProductsController : BaseApiController
+public class ProductsController(
+    VetoProDbContext context,
+    IValidator<ProductCreateDto> productCreateValidator,
+    IValidator<ProductUpdateDto> productUpdateValidator)
+    : BaseApiController(context)
 {
-    private readonly IValidator<ProductCreateDto> _productCreateValidator;
-    private readonly IValidator<ProductUpdateDto> _productUpdateValidator;
-    
-    public ProductsController(
-        VetoProDbContext context,
-        IValidator<ProductCreateDto> productCreateValidator,
-        IValidator<ProductUpdateDto> productUpdateValidator) : base(context)
-    {
-        _productCreateValidator = productCreateValidator;
-        _productUpdateValidator = productUpdateValidator;
-    }
-
     /// <summary>
     /// GET: api/products
     /// Récupère la liste de tous les produits (articles).
@@ -35,7 +27,7 @@ public class ProductsController : BaseApiController
     [AllowAnonymous]
     public async Task<ActionResult<IEnumerable<ProductDto>>> GetAllProducts([FromQuery] PaginationParams paginationParams)
     {
-        var query = _context.Products
+        var query = Context.Products
             .OrderBy(p => p.Name)
             .AsQueryable();
         
@@ -50,7 +42,7 @@ public class ProductsController : BaseApiController
     [AllowAnonymous]
     public async Task<ActionResult<ProductDto>> GetProductById(Guid id)
     {
-        var product = await _context.Products
+        var product = await Context.Products
             .Where(p => p.Id == id)
             .Select(p => p.ToDto())
             .FirstOrDefaultAsync();
@@ -71,14 +63,14 @@ public class ProductsController : BaseApiController
     [Authorize(Roles = "Admin, Doctor")]
     public async Task<ActionResult<ProductDto>> CreateProduct([FromBody] ProductCreateDto createDto)
     {
-        var validationResult = await _productCreateValidator.ValidateAsync(createDto);
+        var validationResult = await productCreateValidator.ValidateAsync(createDto);
         if (!validationResult.IsValid)
         {
             return ValidationProblem(new ValidationProblemDetails(validationResult.ToDictionary()));
         }
         
         // Vérifier si le nom existe déjà (contrainte unique)
-        if (await _context.Products.AnyAsync(p => p.Name == createDto.Name))
+        if (await Context.Products.AnyAsync(p => p.Name == createDto.Name))
         {
             return Conflict("Un produit avec ce nom existe déjà.");
         }
@@ -93,8 +85,8 @@ public class ProductsController : BaseApiController
             IsActive = createDto.IsActive
         };
 
-        _context.Products.Add(newProduct);
-        await _context.SaveChangesAsync();
+        Context.Products.Add(newProduct);
+        await Context.SaveChangesAsync();
 
         // Mapper l'entité créée vers le DTO de retour
         var productDto = newProduct.ToDto();
@@ -110,13 +102,13 @@ public class ProductsController : BaseApiController
     [Authorize(Roles = "Admin, Doctor")]
     public async Task<IActionResult> UpdateProduct(Guid id, [FromBody] ProductUpdateDto updateDto)
     {
-        var validationResult = await _productUpdateValidator.ValidateAsync(updateDto);
+        var validationResult = await productUpdateValidator.ValidateAsync(updateDto);
         if (!validationResult.IsValid)
         {
             return ValidationProblem(new ValidationProblemDetails(validationResult.ToDictionary()));
         }
         
-        var productToUpdate = await _context.Products.FindAsync(id);
+        var productToUpdate = await Context.Products.FindAsync(id);
 
         if (productToUpdate == null)
         {
@@ -124,7 +116,7 @@ public class ProductsController : BaseApiController
         }
 
         // Vérifier si le nouveau nom est déjà pris par un *autre* produit
-        if (await _context.Products.AnyAsync(p => p.Name == updateDto.Name && p.Id != id))
+        if (await Context.Products.AnyAsync(p => p.Name == updateDto.Name && p.Id != id))
         {
             return Conflict("Un autre produit avec ce nom existe déjà.");
         }
@@ -136,7 +128,7 @@ public class ProductsController : BaseApiController
         productToUpdate.UnitPrice = updateDto.UnitPrice;
         productToUpdate.IsActive = updateDto.IsActive;
 
-        await _context.SaveChangesAsync();
+        await Context.SaveChangesAsync();
 
         return NoContent(); // 204 No Content
     }
@@ -149,7 +141,7 @@ public class ProductsController : BaseApiController
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeleteProduct(Guid id)
     {
-        var productToDelete = await _context.Products.FindAsync(id);
+        var productToDelete = await Context.Products.FindAsync(id);
 
         if (productToDelete == null)
         {
@@ -157,14 +149,14 @@ public class ProductsController : BaseApiController
         }
 
         // Sécurité : Vérifier si le produit est utilisé dans une InvoiceLine
-        var isUsedInInvoice = await _context.InvoiceLines.AnyAsync(il => il.ProductId == id);
+        var isUsedInInvoice = await Context.InvoiceLines.AnyAsync(il => il.ProductId == id);
         if (isUsedInInvoice)
         {
             return BadRequest("Ce produit ne peut pas être supprimé car il est lié à une ou plusieurs factures.");
         }
 
-        _context.Products.Remove(productToDelete);
-        await _context.SaveChangesAsync();
+        Context.Products.Remove(productToDelete);
+        await Context.SaveChangesAsync();
 
         return NoContent();
     }

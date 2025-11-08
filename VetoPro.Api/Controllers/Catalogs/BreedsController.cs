@@ -12,20 +12,12 @@ using FluentValidation;
 namespace VetoPro.Api.Controllers.Catalogs;
 
 [Authorize]
-public class BreedsController : BaseApiController
+public class BreedsController(
+    VetoProDbContext context,
+    IValidator<BreedCreateDto> breedCreateValidator,
+    IValidator<BreedUpdateDto> breedUpdateValidator)
+    : BaseApiController(context)
 {
-    private readonly IValidator<BreedCreateDto> _breedCreateValidator;
-    private readonly IValidator<BreedUpdateDto> _breedUpdateValidator;
-    
-    public BreedsController(
-        VetoProDbContext context,
-        IValidator<BreedCreateDto> breedCreateValidator,
-        IValidator<BreedUpdateDto> breedUpdateValidator) : base(context)
-    {
-        _breedCreateValidator = breedCreateValidator;
-        _breedUpdateValidator = breedUpdateValidator;
-    }
-
     /// <summary>
     /// GET: api/breeds
     /// Récupère la liste de toutes les races, avec le nom de leur espèce.
@@ -35,7 +27,7 @@ public class BreedsController : BaseApiController
     [AllowAnonymous]
     public async Task<ActionResult<IEnumerable<BreedDto>>> GetAllBreeds([FromQuery] PaginationParams paginationParams)
     {
-        var query = _context.Breeds
+        var query = Context.Breeds
             .Include(b => b.Species) // Jointure pour charger l'entité Species
             .OrderBy(b => b.Species.Name).ThenBy(b => b.Name) // Trier par espèce, puis par nom
             .AsQueryable();
@@ -51,7 +43,7 @@ public class BreedsController : BaseApiController
     [AllowAnonymous]
     public async Task<ActionResult<BreedDto>> GetBreedById(Guid id)
     {
-        var breed = await _context.Breeds
+        var breed = await Context.Breeds
             .Include(b => b.Species)
             .Select(b => new BreedDto
             {
@@ -78,21 +70,21 @@ public class BreedsController : BaseApiController
     [Authorize(Roles = "Admin, Doctor")]
     public async Task<ActionResult<BreedDto>> CreateBreed([FromBody] BreedCreateDto createDto)
     {
-        var validationResult = await _breedCreateValidator.ValidateAsync(createDto);
+        var validationResult = await breedCreateValidator.ValidateAsync(createDto);
         if (!validationResult.IsValid)
         {
             return ValidationProblem(new ValidationProblemDetails(validationResult.ToDictionary()));
         }
         
         // 1. Vérifier si l'espèce parente existe
-        var species = await _context.Species.FindAsync(createDto.SpeciesId);
+        var species = await Context.Species.FindAsync(createDto.SpeciesId);
         if (species == null)
         {
             return BadRequest("L'espèce (SpeciesId) fournie n'existe pas.");
         }
 
         // 2. Vérifier si le nom existe déjà *pour cette espèce*
-        if (await _context.Breeds.AnyAsync(b => b.Name == createDto.Name && b.SpeciesId == createDto.SpeciesId))
+        if (await Context.Breeds.AnyAsync(b => b.Name == createDto.Name && b.SpeciesId == createDto.SpeciesId))
         {
             return Conflict("Une race avec ce nom existe déjà pour cette espèce.");
         }
@@ -104,8 +96,8 @@ public class BreedsController : BaseApiController
             SpeciesId = createDto.SpeciesId
         };
 
-        _context.Breeds.Add(newBreed);
-        await _context.SaveChangesAsync();
+        Context.Breeds.Add(newBreed);
+        await Context.SaveChangesAsync();
 
         // 4. Mapper au DTO de retour
         var breedDto = new BreedDto
@@ -127,13 +119,13 @@ public class BreedsController : BaseApiController
     [Authorize(Roles = "Admin, Doctor")]
     public async Task<IActionResult> UpdateBreed(Guid id, [FromBody] BreedUpdateDto updateDto)
     {
-        var validationResult = await _breedUpdateValidator.ValidateAsync(updateDto);
+        var validationResult = await breedUpdateValidator.ValidateAsync(updateDto);
         if (!validationResult.IsValid)
         {
             return ValidationProblem(new ValidationProblemDetails(validationResult.ToDictionary()));
         }
         
-        var breedToUpdate = await _context.Breeds.FindAsync(id);
+        var breedToUpdate = await Context.Breeds.FindAsync(id);
 
         if (breedToUpdate == null)
         {
@@ -143,14 +135,14 @@ public class BreedsController : BaseApiController
         // 1. Vérifier si la *nouvelle* espèce parente existe
         if (breedToUpdate.SpeciesId != updateDto.SpeciesId)
         {
-            if (!await _context.Species.AnyAsync(s => s.Id == updateDto.SpeciesId))
+            if (!await Context.Species.AnyAsync(s => s.Id == updateDto.SpeciesId))
             {
                 return BadRequest("La nouvelle espèce (SpeciesId) fournie n'existe pas.");
             }
         }
         
         // 2. Vérifier les conflits de nom
-        if (await _context.Breeds.AnyAsync(b => b.Name == updateDto.Name && b.SpeciesId == updateDto.SpeciesId && b.Id != id))
+        if (await Context.Breeds.AnyAsync(b => b.Name == updateDto.Name && b.SpeciesId == updateDto.SpeciesId && b.Id != id))
         {
             return Conflict("Une autre race avec ce nom existe déjà pour cette espèce.");
         }
@@ -159,7 +151,7 @@ public class BreedsController : BaseApiController
         breedToUpdate.Name = updateDto.Name;
         breedToUpdate.SpeciesId = updateDto.SpeciesId;
 
-        await _context.SaveChangesAsync();
+        await Context.SaveChangesAsync();
 
         return NoContent(); // 204 No Content
     }
@@ -172,7 +164,7 @@ public class BreedsController : BaseApiController
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeleteBreed(Guid id)
     {
-        var breedToDelete = await _context.Breeds.FindAsync(id);
+        var breedToDelete = await Context.Breeds.FindAsync(id);
 
         if (breedToDelete == null)
         {
@@ -180,7 +172,7 @@ public class BreedsController : BaseApiController
         }
 
         // Sécurité : Vérifier si la race est utilisée par des patients
-        var isUsed = await _context.Entry(breedToDelete)
+        var isUsed = await Context.Entry(breedToDelete)
             .Collection(b => b.Patients)
             .Query()
             .AnyAsync();
@@ -190,8 +182,8 @@ public class BreedsController : BaseApiController
             return BadRequest("Cette race ne peut pas être supprimée car elle est utilisée par un ou plusieurs patients.");
         }
 
-        _context.Breeds.Remove(breedToDelete);
-        await _context.SaveChangesAsync();
+        Context.Breeds.Remove(breedToDelete);
+        await Context.SaveChangesAsync();
 
         return NoContent();
     }

@@ -18,7 +18,7 @@ public class ConsultationsController(VetoProDbContext context) : BaseApiControll
     [HttpGet("{id}")]
     public async Task<ActionResult<ConsultationDto>> GetConsultationById(Guid id)
     {
-        var consultation = await _context.Consultations
+        var consultation = await Context.Consultations
             .Include(c => c.Client)
             .Include(c => c.Patient)
             .Include(c => c.Doctor)
@@ -58,7 +58,7 @@ public class ConsultationsController(VetoProDbContext context) : BaseApiControll
     [Authorize(Roles = "Admin, Doctor")]
     public async Task<IActionResult> UpdateConsultation(Guid id, [FromBody] ConsultationUpdateDto updateDto)
     {
-        var consultationToUpdate = await _context.Consultations.FindAsync(id);
+        var consultationToUpdate = await Context.Consultations.FindAsync(id);
 
         if (consultationToUpdate == null)
         {
@@ -67,7 +67,7 @@ public class ConsultationsController(VetoProDbContext context) : BaseApiControll
 
         // Valider le docteur
         if (updateDto.DoctorId != consultationToUpdate.DoctorId &&
-            !await _context.Contacts.AnyAsync(c => c.Id == updateDto.DoctorId && c.IsStaff))
+            !await Context.Contacts.AnyAsync(c => c.Id == updateDto.DoctorId && c.IsStaff))
         {
             return BadRequest("L'ID du docteur n'est pas valide ou n'est pas un membre du personnel.");
         }
@@ -83,7 +83,7 @@ public class ConsultationsController(VetoProDbContext context) : BaseApiControll
         consultationToUpdate.Prescriptions = updateDto.Prescriptions;
         // UpdatedAt sera géré par le DbContext
 
-        await _context.SaveChangesAsync();
+        await Context.SaveChangesAsync();
 
         return NoContent(); // 204 No Content
     }
@@ -96,7 +96,7 @@ public class ConsultationsController(VetoProDbContext context) : BaseApiControll
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeleteConsultation(Guid id)
     {
-        var consultationToDelete = await _context.Consultations
+        var consultationToDelete = await Context.Consultations
             .Include(c => c.Invoices) // Vérifier les factures liées
             .FirstOrDefaultAsync(c => c.Id == id);
 
@@ -111,8 +111,8 @@ public class ConsultationsController(VetoProDbContext context) : BaseApiControll
             return BadRequest("Cette consultation ne peut pas être supprimée car elle est liée à une ou plusieurs factures.");
         }
 
-        _context.Consultations.Remove(consultationToDelete);
-        await _context.SaveChangesAsync();
+        Context.Consultations.Remove(consultationToDelete);
+        await Context.SaveChangesAsync();
 
         return NoContent();
     }

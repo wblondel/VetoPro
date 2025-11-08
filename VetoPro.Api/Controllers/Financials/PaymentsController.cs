@@ -17,7 +17,7 @@ public class PaymentsController(VetoProDbContext context) : BaseApiController(co
     [HttpGet("{id}")]
     public async Task<ActionResult<PaymentDto>> GetPaymentById(Guid id)
     {
-        var payment = await _context.Payments
+        var payment = await Context.Payments
             .Include(p => p.Invoice)
             .Where(p => p.Id == id)
             .FirstOrDefaultAsync();
@@ -50,7 +50,7 @@ public class PaymentsController(VetoProDbContext context) : BaseApiController(co
     [Authorize(Roles = "Admin, Doctor")]
     public async Task<IActionResult> DeletePayment(Guid id)
     {
-        var paymentToDelete = await _context.Payments
+        var paymentToDelete = await Context.Payments
             .Include(p => p.Invoice) // Charger la facture liée
             .FirstOrDefaultAsync(p => p.Id == id);
 
@@ -61,13 +61,13 @@ public class PaymentsController(VetoProDbContext context) : BaseApiController(co
 
         var invoice = paymentToDelete.Invoice;
 
-        _context.Payments.Remove(paymentToDelete);
+        Context.Payments.Remove(paymentToDelete);
 
         // Mettre à jour le statut de la facture (exemple de logique métier)
         if (invoice != null)
         {
             // Recalculer le total payé *après* suppression
-            var totalPaid = await _context.Payments
+            var totalPaid = await Context.Payments
                 .Where(p => p.InvoiceId == invoice.Id && p.Id != id)
                 .SumAsync(p => p.Amount);
 
@@ -81,7 +81,7 @@ public class PaymentsController(VetoProDbContext context) : BaseApiController(co
             }
         }
 
-        await _context.SaveChangesAsync();
+        await Context.SaveChangesAsync();
 
         return NoContent(); // 204 No Content
     }

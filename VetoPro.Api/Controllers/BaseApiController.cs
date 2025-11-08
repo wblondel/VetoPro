@@ -14,16 +14,10 @@ namespace VetoPro.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
-public abstract class BaseApiController : ControllerBase
+public abstract class BaseApiController(VetoProDbContext context) : ControllerBase
 {
     // 'protected' le rend accessible à toutes les classes qui en héritent
-    protected readonly VetoProDbContext _context;
-
-    // Le constructeur de base reçoit le contexte
-    protected BaseApiController(VetoProDbContext context)
-    {
-        _context = context;
-    }
+    protected readonly VetoProDbContext Context = context;
 
     /// <summary>
     /// Récupère l'ID du Contact lié à l'utilisateur JWT actuel.
@@ -41,7 +35,7 @@ public abstract class BaseApiController : ControllerBase
             return (null, Unauthorized("Token non valide."));
         }
 
-        var userContact = await _context.Contacts
+        var userContact = await Context.Contacts
             .Where(c => c.UserId.ToString() == currentUserIdString.ToUpper())
             .Select(c => c.Id)
             .FirstOrDefaultAsync();
