@@ -8,5 +8,5 @@
         x:Class="VetoPro.Views.MainWindow"
         Icon="/Assets/avalonia-logo.ico"
         Title="VetoPro">
-        <views:MainView />
+    <views:MainView />
 </Window>

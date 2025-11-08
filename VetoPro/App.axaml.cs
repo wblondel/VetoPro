@@ -1,12 +1,9 @@
-using System;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Data.Core;
 using Avalonia.Data.Core.Plugins;
 using System.Linq;
 using Avalonia.Markup.Xaml;
-using Microsoft.Extensions.DependencyInjection;
-using VetoPro.Services;
 using VetoPro.ViewModels;
 using VetoPro.Views;
 
@@ -14,8 +11,6 @@ namespace VetoPro;
 
 public partial class App : Application
 {
-    public static IServiceProvider Services { get; private set; } = null!;
-    
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);
@@ -23,11 +18,6 @@ public partial class App : Application
 
     public override void OnFrameworkInitializationCompleted()
     {
-        // Configure dependency injection
-        var services = new ServiceCollection();
-        ConfigureServices(services);
-        Services = services.BuildServiceProvider();
-        
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             // Avoid duplicate validations from both Avalonia and the CommunityToolkit. 
@@ -35,40 +25,20 @@ public partial class App : Application
             DisableAvaloniaDataAnnotationValidation();
             desktop.MainWindow = new MainWindow
             {
-                DataContext = Services.GetRequiredService<MainViewModel>()
+                DataContext = new MainViewModel()
             };
         }
         else if (ApplicationLifetime is ISingleViewApplicationLifetime singleViewPlatform)
         {
             singleViewPlatform.MainView = new MainView
             {
-                DataContext = Services.GetRequiredService<MainViewModel>()
+                DataContext = new MainViewModel()
             };
         }
 
         base.OnFrameworkInitializationCompleted();
     }
-    
-    private void ConfigureServices(ServiceCollection services)
-    {
-        var apiBaseUrl = "http://127.0.0.1:5256"; // TODO: Update this!
 
-        // Configure HttpClient with base address
-        services.AddHttpClient<ISpeciesService, SpeciesService>(client =>
-        {
-            client.BaseAddress = new Uri(apiBaseUrl);
-            client.Timeout = TimeSpan.FromSeconds(30);
-        });
-
-        // Register more services here as you create them
-        // services.AddHttpClient<IPatientService, PatientService>(client => { ... });
-        // services.AddHttpClient<IAppointmentService, AppointmentService>(client => { ... });
-
-        // Register ViewModels
-        services.AddTransient<MainViewModel>();
-        // services.AddTransient<OtherViewModel>();
-    }
-    
     private void DisableAvaloniaDataAnnotationValidation()
     {
         // Get an array of plugins to remove
