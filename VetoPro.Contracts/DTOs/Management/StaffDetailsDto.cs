@@ -1,5 +1,3 @@
-using System.ComponentModel.DataAnnotations;
-
 namespace VetoPro.Contracts.DTOs.Management;
 
 /// <summary>
@@ -10,7 +8,6 @@ public class StaffDetailsDto
 {
     public Guid Id { get; set; }
 
-    [Required]
     public string Role { get; set; }
 
     public string? LicenseNumber { get; set; }

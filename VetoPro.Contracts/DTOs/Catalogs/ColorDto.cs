@@ -1,5 +1,3 @@
-using System.ComponentModel.DataAnnotations;
-
 namespace VetoPro.Contracts.DTOs.Catalogs;
 
 /// <summary>
@@ -9,7 +7,6 @@ public class ColorDto
 {
     public Guid Id { get; set; }
 
-    [Required]
     public string Name { get; set; }
 
     /// <summary>

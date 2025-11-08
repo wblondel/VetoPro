@@ -1,5 +1,3 @@
-using System.ComponentModel.DataAnnotations;
-
 namespace VetoPro.Contracts.DTOs.Catalogs;
 
 /// <summary>
@@ -9,7 +7,6 @@ public class BreedDto
 {
     public Guid Id { get; set; }
 
-    [Required]
     public string Name { get; set; }
 
     /// <summary>
@@ -20,6 +17,5 @@ public class BreedDto
     /// <summary>
     /// Nom de l'espèce parente (pratique pour l'affichage).
     /// </summary>
-    [Required]
     public string SpeciesName { get; set; }
 }

@@ -1,5 +1,3 @@
-using System.ComponentModel.DataAnnotations;
-
 namespace VetoPro.Contracts.DTOs.Financials;
 
 /// <summary>
@@ -14,13 +12,10 @@ public class PaymentDto
     /// </summary>
     public Guid InvoiceId { get; set; }
 
-    [Required]
     public DateTime PaymentDate { get; set; }
 
-    [Required]
     public decimal Amount { get; set; }
 
-    [Required]
     public string PaymentMethod { get; set; }
 
     public string? TransactionId { get; set; }

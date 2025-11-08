@@ -1,5 +1,3 @@
-using System.ComponentModel.DataAnnotations;
-
 namespace VetoPro.Contracts.DTOs.Management;
 
 /// <summary>
@@ -15,10 +13,8 @@ public class ContactDto
     /// </summary>
     public string? LoginEmail { get; set; }
 
-    [Required]
     public string FirstName { get; set; }
 
-    [Required]
     public string LastName { get; set; }
 
     /// <summary>

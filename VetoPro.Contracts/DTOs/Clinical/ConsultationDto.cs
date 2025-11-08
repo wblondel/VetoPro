@@ -1,5 +1,3 @@
-using System.ComponentModel.DataAnnotations;
-
 namespace VetoPro.Contracts.DTOs.Clinical;
 
 /// <summary>
@@ -17,20 +15,16 @@ public class ConsultationDto
     /// <summary>
     /// Date et heure réelles de la consultation.
     /// </summary>
-    [Required]
     public DateTime ConsultationDate { get; set; }
 
     // --- Personnes Impliquées ---
     public Guid ClientId { get; set; }
-    [Required]
     public string ClientName { get; set; } // Nom du client présent
 
     public Guid PatientId { get; set; }
-    [Required]
     public string PatientName { get; set; } // Nom du patient
 
     public Guid DoctorId { get; set; }
-    [Required]
     public string DoctorName { get; set; } // Nom du docteur
 
     // --- Constantes (Vitals) ---

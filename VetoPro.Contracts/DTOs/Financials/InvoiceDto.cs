@@ -1,5 +1,3 @@
-using System.ComponentModel.DataAnnotations;
-
 namespace VetoPro.Contracts.DTOs.Financials;
 
 /// <summary>
@@ -9,24 +7,18 @@ public class InvoiceDto
 {
     public Guid Id { get; set; }
 
-    [Required]
     public string InvoiceNumber { get; set; }
 
-    [Required]
     public DateOnly IssueDate { get; set; }
 
-    [Required]
     public DateOnly DueDate { get; set; }
 
-    [Required]
     public decimal TotalAmount { get; set; }
 
-    [Required]
     public string Status { get; set; }
 
     // --- Informations sur le Client ---
     public Guid ClientId { get; set; }
-    [Required]
     public string ClientName { get; set; } // Prénom + Nom
 
     // --- Informations sur la Consultation (Optionnel) ---

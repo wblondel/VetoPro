@@ -1,14 +1,17 @@
-using System.ComponentModel.DataAnnotations;
-
 namespace VetoPro.Contracts.DTOs.Catalogs;
 
 /// <summary>
-/// DTO pour l'entité Species.
-/// Ne contient que les informations publiques nécessaires au client.
+/// Représente une espèce animale (ex: "Chien", "Chat").
 /// </summary>
 public class SpeciesDto
 {
+    /// <summary>
+    /// L'identifiant unique (UUID) de l'espèce.
+    /// </summary>
     public Guid Id { get; set; }
-    [Required]
+    
+    /// <summary>
+    /// Le nom de l'espèce.
+    /// </summary>
     public string Name { get; set; }
 }

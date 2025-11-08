@@ -1,5 +1,3 @@
-using System.ComponentModel.DataAnnotations;
-
 namespace VetoPro.Contracts.DTOs.Catalogs;
 
 /// <summary>
@@ -9,9 +7,7 @@ public class PriceListDto
 {
     public Guid Id { get; set; }
 
-    [Required]
     public Guid ServiceId { get; set; }
-    [Required]
     public string ServiceName { get; set; }
 
     // L'espèce est optionnelle.
@@ -21,10 +17,8 @@ public class PriceListDto
     public decimal? WeightMinKg { get; set; }
     public decimal? WeightMaxKg { get; set; }
 
-    [Required]
     public decimal Amount { get; set; }
     
-    [Required]
     public string Currency { get; set; }
     
     public bool IsActive { get; set; }
