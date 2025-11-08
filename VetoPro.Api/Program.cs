@@ -38,6 +38,8 @@ public class Program
             
             var builder = WebApplication.CreateBuilder(args);
             builder.Host.UseSerilog();
+
+            var webAppCORS = "WebAppCORS";
             
             // Register Exception Handler Service
             builder.Services.AddExceptionHandler<ErrorHandlingMiddleware>();
@@ -159,12 +161,24 @@ public class Program
             // CORS pour les applications clientes
             builder.Services.AddCors(options =>
             {
-                options.AddDefaultPolicy(corsBuilder =>
-                {
-                    corsBuilder.AllowAnyOrigin()
-                        .AllowAnyMethod()
-                        .AllowAnyHeader();
-                });
+                options.AddPolicy(name: webAppCORS,
+                    policy =>
+                    {
+                        policy.WithOrigins(
+                                "https://www.vetopro.com",
+                                "https://app.vetopro.com")
+                            .AllowAnyMethod()
+                            .AllowAnyHeader()
+                            .WithExposedHeaders("X-Pagination");
+
+                        if (builder.Environment.IsDevelopment())
+                        {
+                            policy.WithOrigins("http://localhost:5256", "https://localhost:7123")
+                                .AllowAnyMethod()
+                                .AllowAnyHeader()
+                                .WithExposedHeaders("X-Pagination");
+                        }
+                    });
             });
 
             // Construction de l'application
@@ -189,7 +203,7 @@ public class Program
             app.MapControllers();
 
             // CORS pour les applications clientes
-            app.UseCors();
+            app.UseCors(webAppCORS);
 
             // Seed just after the app is built and before it starts
             await app.SeedDatabaseAsync();
