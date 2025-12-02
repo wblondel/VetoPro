@@ -1,0 +1,34 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:VetoPro.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+             x:Class="VetoPro.Views.DashboardPage"
+             x:DataType="vm:DashboardViewModel">
+  
+    <Grid RowDefinitions="Auto,*">
+        <Border Grid.Row="0" Background="#2196F3" Padding="20">
+            <TextBlock Text="{Binding WelcomeMessage}" 
+                       Foreground="White" 
+                       FontSize="20" 
+                       FontWeight="Bold"/>
+        </Border>
+
+        <Border Grid.Row="1" Padding="20">
+            <StackPanel Spacing="20" 
+                        HorizontalAlignment="Center" 
+                        VerticalAlignment="Center">
+            
+                <TextBlock Text="Ceci est le tableau de bord sécurisé." 
+                           FontSize="18"
+                           HorizontalAlignment="Center"/>
+            
+                <TextBlock Text="Vous êtes connecté." 
+                           FontSize="14" 
+                           Foreground="Gray"
+                           HorizontalAlignment="Center"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

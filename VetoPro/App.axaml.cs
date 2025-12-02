@@ -4,6 +4,8 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Data.Core;
 using Avalonia.Data.Core.Plugins;
 using System.Linq;
+using System.Net.Http;
+using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
 using VetoPro.ViewModels;
 using VetoPro.Views;
@@ -28,21 +30,46 @@ public partial class App : Application
     {
         var services = new ServiceCollection();
         
+        string baseAddress = "https://localhost:7008";
+        
+        if (OperatingSystem.IsAndroid())
+        {
+            baseAddress = "https://10.0.2.2:7008";
+        }
+        
         // Use AddSingleton so the same storage instance is used everywhere
         services.AddSingleton<ISecureStorageService, SecureStorageService>();
+        services.AddSingleton<INavigationService, NavigationService>();
         
         // Register the AuthTokenHandler as Transient (it's middleware for HttpClient)
         services.AddTransient<AuthTokenHandler>();
         
-        // Register the AuthService using AddHttpClient.
-        // This creates an HttpClient instance specifically for AuthService
-        // and automatically adds our AuthTokenHandler to its request pipeline.
-        services.AddHttpClient<AuthService>(client =>
+        // Configure HttpClent
+        var httpClientBuilder = services.AddHttpClient<AuthService>(client =>
+        {
+            client.BaseAddress = new Uri(baseAddress);
+        });
+        
+        // Only configure the SSL bypass if we are NOT in a browser.
+        // Browsers throw an exception if you try to touch ServerCertificateCustomValidationCallback.
+        if (!OperatingSystem.IsBrowser())
+        {
+            httpClientBuilder.ConfigurePrimaryHttpMessageHandler(() => 
             {
-                // IMPORTANT: Replace this with your API's base URL
-                client.BaseAddress = new Uri("https://localhost:7008"); // Example: Your local API URL
-            })
-            .AddHttpMessageHandler<AuthTokenHandler>();
+                var handler = new HttpClientHandler();
+            
+                #if DEBUG
+                // Allow self-signed certs on Desktop, Android, and iOS during dev
+                handler.ServerCertificateCustomValidationCallback = 
+                    (message, cert, chain, errors) => true;
+                #endif
+            
+                return handler;
+            });
+        } 
+        
+        // Add the token handler to the pipeline (applies to all platforms)
+        httpClientBuilder.AddHttpMessageHandler<AuthTokenHandler>();
             
         // --- Register Other Services ---
         // Register other services your app will need (e.g., PatientService)
@@ -50,12 +77,16 @@ public partial class App : Application
         
         // --- Register ViewModels ---
         // Register ViewModels as Transient (a new one for each View)
+        services.AddTransient<MainViewModel>();
         services.AddTransient<LoginPageViewModel>();
-        // services.AddTransient<MainViewModel>();
+        services.AddTransient<DashboardViewModel>();
         // services.AddTransient<PatientListViewModel>();
         
         // Build the ServiceProvider
         Services = services.BuildServiceProvider();
+        
+        // --- Démarrage avec MainViewModel (Le Shell) ---
+        var mainViewModel = Services.GetRequiredService<MainViewModel>();
         
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
@@ -64,13 +95,14 @@ public partial class App : Application
             DisableAvaloniaDataAnnotationValidation();
             
             desktop.MainWindow = new MainWindow {
-                DataContext = Services.GetRequiredService<LoginPageViewModel>()
+                DataContext = mainViewModel
             };
         }
-        else if (ApplicationLifetime is ISingleViewApplicationLifetime singleViewPlatform)
+        else if (ApplicationLifetime is ISingleViewApplicationLifetime singleView)
         {
-            singleViewPlatform.MainView = new LoginPage {
-                DataContext = Services.GetRequiredService<LoginPageViewModel>()
+            singleView.MainView = new MainView
+            {
+                DataContext = mainViewModel
             };
         }
 

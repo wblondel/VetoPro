@@ -7,7 +7,7 @@
         x:Class="VetoPro.Views.MainWindow"
         Icon="/Assets/avalonia-logo.ico"
         Title="VetoPro">
-    
-    <views:LoginPage />
-    
+        
+    <views:MainView />
+
 </Window>

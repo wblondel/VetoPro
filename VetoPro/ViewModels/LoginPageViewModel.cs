@@ -14,14 +14,11 @@ namespace VetoPro.ViewModels;
 /// </summary>
 public partial class LoginPageViewModel : ObservableObject
 {
-    // Services injectés
     private readonly AuthService _authService;
     private readonly ISecureStorageService _secureStorage;
-    // Remarque : Vous aurez probablement besoin d'un 'NavigationService' injecté ici
-    // pour naviguer vers la page principale après la connexion.
+    private readonly INavigationService _navigationService;
 
     // --- Propriétés liées à l'UI ---
-
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(LoginCommand))] // Active/désactive le bouton si vide
     private string _email = "";
@@ -37,11 +34,14 @@ public partial class LoginPageViewModel : ObservableObject
     private bool _isLoading;
 
     // --- Constructeur ---
-
-    public LoginPageViewModel(AuthService authService, ISecureStorageService secureStorage)
+    public LoginPageViewModel(
+        AuthService authService, 
+        ISecureStorageService secureStorage,
+        INavigationService navigationService) // <-- Injection
     {
         _authService = authService;
         _secureStorage = secureStorage;
+        _navigationService = navigationService;
     }
 
     // --- Commandes (Actions) ---
@@ -77,7 +77,7 @@ public partial class LoginPageViewModel : ObservableObject
                 // dans un service d'état global si nécessaire)
 
                 // 4. Naviguer vers la page principale de l'application
-                // Exemple : _navigationService.NavigateTo(new MainViewModel());
+                _navigationService.NavigateTo<DashboardViewModel>();
             }
             else
             {
