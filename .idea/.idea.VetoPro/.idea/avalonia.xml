@@ -4,6 +4,8 @@
     <option name="projectPerEditor">
       <map>
         <entry key="VetoPro/App.axaml" value="VetoPro.Desktop/VetoPro.Desktop.csproj" />
+        <entry key="VetoPro/Views/DashboardPage.axaml" value="VetoPro.Desktop/VetoPro.Desktop.csproj" />
+        <entry key="VetoPro/Views/LoginPage.axaml" value="VetoPro.Desktop/VetoPro.Desktop.csproj" />
         <entry key="VetoPro/Views/MainView.axaml" value="VetoPro.Desktop/VetoPro.Desktop.csproj" />
         <entry key="VetoPro/Views/MainWindow.axaml" value="VetoPro.Desktop/VetoPro.Desktop.csproj" />
       </map>

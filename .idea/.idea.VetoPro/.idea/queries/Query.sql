@@ -1,0 +1,1 @@
+select * from Contacts where UserId = '1D727064-384B-483C-AAAA-EF309D317529';
