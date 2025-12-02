@@ -1,0 +1,59 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:VetoPro.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="400" d:DesignHeight="600"
+             x:Class="VetoPro.Views.LoginPage"
+             x:DataType="vm:LoginPageViewModel">
+  
+  <Grid RowDefinitions="*,Auto,*" ColumnDefinitions="*,Auto,*">
+
+    <StackPanel Grid.Row="1" Grid.Column="1"
+                Spacing="10"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Width="300">
+
+      <TextBlock Text="Login"
+                 FontSize="24"
+                 FontWeight="Bold"
+                 HorizontalAlignment="Center"
+                 Margin="0,0,0,20"/>
+      
+      <TextBlock Text="{Binding ErrorMessage}"
+                 Foreground="Red"
+                 TextWrapping="Wrap"
+                 HorizontalAlignment="Center"
+                 Margin="0,0,0,10"
+                 IsVisible="{Binding !!ErrorMessage}"/> <TextBlock Text="Email"/>
+      <TextBox Text="{Binding Email, Mode=TwoWay}"
+               Watermark="example@vetopro.com"
+               IsEnabled="{Binding !IsLoading}"/>
+
+      <TextBlock Text="Password"/>
+      <TextBox Text="{Binding Password, Mode=TwoWay}"
+               PasswordChar="*"
+               Watermark="••••••••"
+               IsEnabled="{Binding !IsLoading}"/>
+      
+      <Panel Height="40" Margin="0,15,0,0">
+        
+        <Button Content="Login"
+                Command="{Binding LoginCommand}"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"
+                IsVisible="{Binding !IsLoading}"
+                Classes="primary"/> <ProgressBar IsIndeterminate="True"
+                     IsVisible="{Binding IsLoading}"
+                     HorizontalAlignment="Stretch"
+                     VerticalAlignment="Center"/>
+      </Panel>
+      
+      <Button Content="Don't have an account? Register"
+              HorizontalAlignment="Center"
+              Classes="link"
+              IsVisible="{Binding !IsLoading}"/>
+              </StackPanel>
+  </Grid>
+</UserControl>
