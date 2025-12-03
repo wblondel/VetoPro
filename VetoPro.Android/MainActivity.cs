@@ -4,6 +4,8 @@ using Android.OS;
 using Avalonia;
 using Avalonia.Android;
 using Akavache;
+using Akavache.EncryptedSqlite3;
+using Akavache.SystemTextJson;
 
 namespace VetoPro.Android;
 
@@ -18,7 +20,11 @@ public class MainActivity : AvaloniaMainActivity<App>
     protected override void OnCreate(Bundle? savedInstanceState)
     {
         var dummy = typeof(Akavache.EncryptedSqlite3.EncryptedSqliteBlobCache);
-        BlobCache.EnsureInitialized();
+        
+        Splat.Builder.AppBuilder.CreateSplatBuilder()
+            .WithAkavacheCacheDatabase<SystemJsonSerializer>(builder =>
+                builder.WithApplicationName("VetoPro")
+                    .WithEncryptedSqliteProvider()); //
         
         base.OnCreate(savedInstanceState);
     }

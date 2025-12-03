@@ -11,8 +11,9 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="akavache.core" />
+        <PackageReference Include="Akavache" />
         <PackageReference Include="Akavache.EncryptedSqlite3" />
+        <PackageReference Include="Akavache.SystemTextJson" />
         <PackageReference Include="Avalonia" />
         <PackageReference Include="Avalonia.Themes.Fluent" />
         <PackageReference Include="Avalonia.Fonts.Inter" />

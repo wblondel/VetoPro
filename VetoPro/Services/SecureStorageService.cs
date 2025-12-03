@@ -12,18 +12,11 @@ namespace VetoPro.Services;
 /// </summary>
 public class SecureStorageService : ISecureStorageService
 {
-    // Akavache setup. 'BlobCache.EncryptedStorage' provides machine-level encryption.
-    public SecureStorageService()
-    {
-        // Set the application name for Akavache
-        BlobCache.ApplicationName = "VetoPro";
-    }
-
     public async Task SetAsync(string key, string value)
     {
         try
         {
-            await BlobCache.Secure.InsertObject(key, value);
+            await CacheDatabase.Secure.InsertObject(key, value);
         }
         catch (Exception ex)
         {
@@ -35,7 +28,7 @@ public class SecureStorageService : ISecureStorageService
     {
         try
         {
-            return await BlobCache.Secure.GetObject<string>(key);
+            return await CacheDatabase.Secure.GetObject<string>(key);
         }
         catch (KeyNotFoundException)
         {
@@ -53,7 +46,7 @@ public class SecureStorageService : ISecureStorageService
         try
         {
             // We must block here as the interface is synchronous.
-            BlobCache.Secure.InvalidateObject<string>(key).Wait();
+            CacheDatabase.Secure.InvalidateObject<string>(key).Wait();
             return true;
         }
         catch (Exception ex)

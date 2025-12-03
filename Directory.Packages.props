@@ -6,10 +6,10 @@
   <ItemGroup>
     <!-- Avalonia packages -->
     <!-- Important: keep version in sync! -->
-    <PackageVersion Include="Akavache" Version="11.4.1" />
-    <PackageVersion Include="akavache.core" Version="10.2.41" />
-    <PackageVersion Include="Akavache.EncryptedSqlite3" Version="11.4.1" />
+    <PackageVersion Include="Akavache" Version="11.5.1" />
+    <PackageVersion Include="Akavache.EncryptedSqlite3" Version="11.5.1" />
     <PackageVersion Include="Akavache.Sqlite3" Version="11.4.1" />
+    <PackageVersion Include="Akavache.SystemTextJson" Version="11.5.1" />
     <PackageVersion Include="Avalonia" Version="11.3.9" />
     <PackageVersion Include="Avalonia.Themes.Fluent" Version="11.3.9" />
     <PackageVersion Include="Avalonia.Fonts.Inter" Version="11.3.9" />

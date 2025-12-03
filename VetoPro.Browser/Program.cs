@@ -4,6 +4,8 @@ using Avalonia;
 using Avalonia.Browser;
 using VetoPro;
 using Akavache;
+using Akavache.EncryptedSqlite3;
+using Akavache.SystemTextJson;
 
 [assembly: SupportedOSPlatform("browser")]
 
@@ -13,7 +15,10 @@ internal sealed partial class Program
     {
         var dummy = typeof(Akavache.EncryptedSqlite3.EncryptedSqliteBlobCache);
         
-        BlobCache.EnsureInitialized();
+        Splat.Builder.AppBuilder.CreateSplatBuilder()
+            .WithAkavacheCacheDatabase<SystemJsonSerializer>(akavacheBuilder =>
+                akavacheBuilder.WithApplicationName("VetoPro")
+                    .WithEncryptedSqliteProvider()); //
         
         await BuildAvaloniaApp()
             .WithInterFont()

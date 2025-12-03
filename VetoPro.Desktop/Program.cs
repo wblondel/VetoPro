@@ -1,6 +1,8 @@
 ﻿using System;
 using Akavache;
+using Akavache.EncryptedSqlite3;
 using Avalonia;
+using Akavache.SystemTextJson;
 
 namespace VetoPro.Desktop;
 
@@ -12,9 +14,12 @@ sealed class Program
     [STAThread]
     public static void Main(string[] args)
     {
-        var dummy = typeof(Akavache.EncryptedSqlite3.EncryptedSqliteBlobCache);
+        Splat.Builder.AppBuilder.CreateSplatBuilder()
+            .WithAkavacheCacheDatabase<SystemJsonSerializer>(builder =>
+                builder.WithApplicationName("VetoPro")
+                    .WithEncryptedSqliteProvider()); // REQUIRED: Explicitly initialize SQLite provider
         
-        BlobCache.EnsureInitialized();
+        var dummy = typeof(Akavache.EncryptedSqlite3.EncryptedSqliteBlobCache);
         
         BuildAvaloniaApp()
             .StartWithClassicDesktopLifetime(args);

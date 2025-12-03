@@ -1,10 +1,12 @@
+using Akavache;
+using Akavache.EncryptedSqlite3;
 using Foundation;
 using UIKit;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.iOS;
 using Avalonia.Media;
-using Akavache;
+using Akavache.SystemTextJson;
 
 namespace VetoPro.iOS;
 
@@ -19,8 +21,11 @@ public partial class AppDelegate : AvaloniaAppDelegate<App>
     protected override AppBuilder CustomizeAppBuilder(AppBuilder builder)
     {
         var dummy = typeof(Akavache.EncryptedSqlite3.EncryptedSqliteBlobCache);
-        
-        BlobCache.EnsureInitialized();
+
+        Splat.Builder.AppBuilder.CreateSplatBuilder()
+            .WithAkavacheCacheDatabase<SystemJsonSerializer>(akavacheBuilder =>
+                akavacheBuilder.WithApplicationName("VetoPro")
+                    .WithEncryptedSqliteProvider());
         
         return base.CustomizeAppBuilder(builder)
             .WithInterFont();
